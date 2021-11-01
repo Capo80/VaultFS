@@ -44,6 +44,6 @@ No tests have been implemented so far.
 | :x: | File Creation | |
 | :x: | File Write | |
 | :x: | File Read | |
-| :x: | Wite Protection | |
+| :x: | Write Protection | |
 | :x: | Umount Protection | |
 | :x: | Block Device Protection | |
