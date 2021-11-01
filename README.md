@@ -4,7 +4,7 @@ A simplified version of the ext4 FileSystem with added security features. This F
 The security features that i plan to implement are:
 - Write protection on file, files should only be written once and never modified;
 - Umount protection, the filesystem should be detached only on system shutdown;
-- Underlaying block device protection, the user should not be able to mess with the underlying block device;
+- Underlaying block device protection, the user should not be able to interact with the underlying block device after the system is mounted;
 
 Details on the implementation and feasibility will be added as development continues.
 
