@@ -56,7 +56,7 @@ static void __exit ransomfs_exit(void)
     if (ret)
         printk(KERN_ERR "unregister_filesystem() failed\n");
 
-    ransomfs_destroy_inode_cache();
+    //ransomfs_destroy_inode_cache();
 
     printk(KERN_INFO"module unloaded\n");
 }

@@ -17,11 +17,11 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     struct ransomfs_sb_info *dsb = NULL;
     struct ransomfs_sb_info *rbi = NULL;
     struct inode *root_inode = NULL;
-    int ret = 0, i;
+    int ret = 0;
 
     /* Init sb */
     sb->s_magic = RANSOMFS_MAGIC;
-    sb->block_size = sb, RANSOMFS_BLOCK_SIZE;
+    sb_set_blocksize(sb, RANSOMFS_BLOCK_SIZE);
     //sb->s_op = &ransom_super_ops;
 
     /* Read sb from disk */
@@ -49,6 +49,7 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     rbi->blocks_count = dsb->blocks_count;
     rbi->free_inodes_count = dsb->free_inodes_count;
 	rbi->free_blocks_count = dsb->free_blocks_count;
+	rbi->group_table_blocks_count = dsb->group_table_blocks_count;
 	rbi->mtime = ktime_get_real_ns();
 
     sb->s_fs_info = rbi;
@@ -59,8 +60,9 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     root_inode = ransomfs_iget(sb, 0);
     if (IS_ERR(root_inode)) {
         ret = PTR_ERR(root_inode);
-        goto free_bfree;
+        goto free_rbi;
     }
+
     inode_init_owner(root_inode, NULL, root_inode->i_mode);
     sb->s_root = d_make_root(root_inode);
     if (!sb->s_root) {
@@ -72,10 +74,6 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
 
 iput:
     iput(root_inode);
-free_bfree:
-    kfree(rbi->bfree_bitmap);
-free_ifree:
-    kfree(rbi->ifree_bitmap);
 free_rbi:
     kfree(rbi);
 release:

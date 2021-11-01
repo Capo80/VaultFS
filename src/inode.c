@@ -13,10 +13,13 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     struct ransomfs_inode_info *ci = NULL;
     struct ransomfs_sb_info *sbi = RANSOMFS_SB(sb);
     struct buffer_head *bh = NULL;
-    uint32_t inode_block = (ino / RANSOMFS_INODES_PER_BLOCK) + 1;
-    uint32_t inode_shift = ino % RANSOMFS_INODES_PER_BLOCK;
+    uint64_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
+    uint64_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
+    uint64_t inode_block = 3 + sbi->group_table_blocks_count + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
     int ret;
 
+    // TODO check bitmap somewhere here? maybe?
+    
     /* Fail if ino is out of range */
     if (ino >= sbi->inodes_count)
         return ERR_PTR(-EINVAL);
@@ -30,19 +33,21 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     if (!(inode->i_state & I_NEW))
         return inode;
 
-    ci = RANSOMFS_INODE(inode);
+    ci = RANSOMFS_INODE(inode); //not sure about this for now
     /* Read inode from disk and initialize */
     bh = sb_bread(sb, inode_block);
     if (!bh) {
         ret = -EIO;
-        goto failed;
+        brelse(bh);
+    	iget_failed(inode);
+    	return ERR_PTR(ret);
     }
     cinode = (struct ransomfs_inode *) bh->b_data;
     cinode += inode_shift;
 
     inode->i_ino = ino;
     inode->i_sb = sb;
-    inode->i_op = &ransomfs_inode_ops;
+    //inode->i_op = &ransomfs_inode_ops;
 
     inode->i_mode = le32_to_cpu(cinode->i_mode);
     i_uid_write(inode, le32_to_cpu(cinode->i_uid));
@@ -55,19 +60,18 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_mtime.tv_sec = (time64_t) le32_to_cpu(cinode->i_mtime);
     inode->i_mtime.tv_nsec = 0;
     inode->i_blocks = le32_to_cpu(cinode->i_blocks);
-    set_nlink(inode, le32_to_cpu(cinode->i_nlink));
 
     if (S_ISDIR(inode->i_mode)) {
-        ci->dir_block = le32_to_cpu(cinode->dir_block);
-        inode->i_fop = &ransomfs_dir_ops;
+        //ci->dir_block = le32_to_cpu(cinode->dir_block);
+        //inode->i_fop = &ransomfs_dir_ops;
     } else if (S_ISREG(inode->i_mode)) {
-        ci->ei_block = le32_to_cpu(cinode->ei_block);
-        inode->i_fop = &ransomfs_file_ops;
-        inode->i_mapping->a_ops = &ransomfs_aops;
+        //ci->ei_block = le32_to_cpu(cinode->ei_block);
+        //inode->i_fop = &ransomfs_file_ops;
+        //inode->i_mapping->a_ops = &ransomfs_aops;
     } else if (S_ISLNK(inode->i_mode)) {
-        strncpy(ci->i_data, cinode->i_data, sizeof(ci->i_data));
-        inode->i_link = ci->i_data;
-        inode->i_op = &symlink_inode_ops;
+        //strncpy(ci->i_data, cinode->i_data, sizeof(ci->i_data));
+        //inode->i_link = ci->i_data;
+        //inode->i_op = &symlink_inode_ops;
     }
 
     brelse(bh);
@@ -77,8 +81,4 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
 
     return inode;
 
-failed:
-    brelse(bh);
-    iget_failed(inode);
-    return ERR_PTR(ret);
 }

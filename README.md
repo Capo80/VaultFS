@@ -24,6 +24,16 @@ The major differences with the ext4 FileSystem are:
 - No group 0 padding, the ext4 FileSystem leaves 1024 bytes padding at the start of the for boot sectors and other operating system oddities, this FileSytem is not maent to house an OS so this is not needed;
 - More differences will be added as development continues;
 
+## Build
+
+Enter the source folder and run: ```make```
+
+Default size for the test image is 1GB, to change it edit the "IMAGESIZE" variable in the Makefile.
+
+## Test
+
+No tests have been implemented so far.
+
 ## Current Progress
 
 | State | Task | Notes |
