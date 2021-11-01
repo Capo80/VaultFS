@@ -38,9 +38,9 @@ No tests have been implemented so far.
 
 | State | Task | Notes |
 |:-:|:-:|:-:|
-| :gear: | FileSystem registration | |
-| :x: | Mounuting and Unmounting | |
-| :x: | Directory Read | |
+| :heavy_check_mark: | FileSystem registration | |
+| :heavy_check_mark: | Mounuting and Unmounting | |
+| :gear: | Directory Read | |
 | :x: | File Creation | |
 | :x: | File Write | |
 | :x: | File Read | |
