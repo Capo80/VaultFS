@@ -39,7 +39,7 @@ No tests have been implemented so far.
 | State | Task | Notes |
 |:-:|:-:|:-:|
 | :heavy_check_mark: | FileSystem registration | |
-| :heavy_check_mark: | Mounuting and Unmounting | |
+| :heavy_check_mark: | Mounting and Unmounting | |
 | :gear: | Directory Read | |
 | :x: | File Creation | |
 | :x: | File Write | |
