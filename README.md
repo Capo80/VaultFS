@@ -40,8 +40,8 @@ No tests have been implemented so far.
 |:-:|:-:|:-:|
 | :heavy_check_mark: | FileSystem registration | |
 | :heavy_check_mark: | Mounting and Unmounting | |
-| :gear: | Directory Read | |
-| :x: | File Creation | |
+| :heavy_check_mark: | Directory Read | |
+| :gear: | File Creation | |
 | :x: | File Write | |
 | :x: | File Read | |
 | :x: | Write Protection | |
