@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <linux/fs.h>
 #include <unistd.h>
 
@@ -26,7 +27,6 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
     uint64_t mod = inodes_count % RANSOMFS_INODES_PER_BLOCK;
     if (mod)
         inodes_count += RANSOMFS_INODES_PER_BLOCK - mod;
-    uint64_t group_table_blocks_count = (blocks_count / RANSOMFS_BLOCKS_PER_GROUP + 1) / ( RANSOMFS_BLOCK_SIZE / sizeof(struct ransomfs_group_desc)) + 1;
 
     memset(sb, 0, sizeof(struct superblock));
     sb->info = (struct ransomfs_sb_info) {
@@ -35,20 +35,18 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
         .inodes_count = htole64(inodes_count),
         .free_inodes_count = htole64(inodes_count - 1),
         .free_blocks_count = htole64(blocks_count - 1), //TODO this is wrong
-        .group_table_blocks_count = htole64(group_table_blocks_count)
     };
 
     printf(
-        "Superblock: (%ld)\n"
+        "Superblock: (%lu)\n"
         "\tmagic=%#x\n"
-        "\tnr_blocks=%lu\n"
-        "\tnr_inodes=%lu"
-        "\tnr_free_inodes=%lu\n"
-        "\tnr_free_blocks=%lu\n"
-        "\tgroup_table_blocks_count=%lu\n",
+        "\tnr_blocks=%u\n"
+        "\tnr_inodes=%u"
+        "\tnr_free_inodes=%u\n"
+        "\tnr_free_blocks=%u\n",
         sizeof(struct superblock), sb->info.magic, sb->info.blocks_count,
         sb->info.inodes_count, sb->info.free_inodes_count,
-        sb->info.free_blocks_count, sb->info.group_table_blocks_count);
+        sb->info.free_blocks_count);
 
 
     int ret = write(fd, sb, sizeof(struct superblock));
@@ -64,11 +62,19 @@ int write_root_inode(int fd) {
 
 	struct ransomfs_inode root_inode;
 
-	root_inode.i_mode = htole32(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
+    //init empty root extent
+    struct ransomfs_extent_header root_extent;
+    root_extent.magic = RANSOMFS_EXTENT_MAGIC;
+    root_extent.entries = 0;
+    root_extent.max = RANSOMFS_EXTENT_PER_INODE;
+    root_extent.depth = 0;
+
+	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
 	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user
-	root_inode.i_size = htole64(RANSOMFS_BLOCK_SIZE); 
+	root_inode.i_size = 0; //empty directory
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
-	root_inode.i_blocks = htole64(0);
+	root_inode.i_blocks = htole32(0);
+    root_inode.extent_tree[0] = root_extent;
 
 	int ret = write(fd, (char*) &root_inode, sizeof(struct ransomfs_inode));
     if (ret != sizeof(struct ransomfs_inode)) {
@@ -151,12 +157,16 @@ int main(int argc, char **argv) {
     	ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
+    printf("Written %ld block of desc table\n", block_desc_count);
+
     //TODO write initial bitmaps (just flip first bit probrably)
 	if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*2)) {
 		perror("bitmaps write_padding():");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
+
+    printf("Curr file position: %ld\n", lseek(fd, 0, SEEK_CUR));
 
     /* Write root inode */
 	if (!write_root_inode(fd)) {

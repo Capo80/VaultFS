@@ -19,26 +19,26 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     struct inode *root_inode = NULL;
     int ret = 0;
 
-    /* Init sb */
+    //Init sb
     sb->s_magic = RANSOMFS_MAGIC;
     sb_set_blocksize(sb, RANSOMFS_BLOCK_SIZE);
     //sb->s_op = &ransom_super_ops;
 
-    /* Read sb from disk */
+    // Read sb from disk
     bh = sb_bread(sb, RANSOMFS_SB_BLOCK_NR);
     if (!bh)
         return -EIO;
 
     dsb = (struct ransomfs_sb_info *) bh->b_data;
 
-    /* Check magic number */
+    // Check magic number
     if (dsb->magic != sb->s_magic) {
         pr_err("Wrong magic number\n");
         ret = -EINVAL;
         goto release;
     }
 
-    /* Alloc sb_info */
+    //fill sb_info 
     rbi = kzalloc(sizeof(struct ransomfs_sb_info), GFP_KERNEL);
     if (!rbi) {
         ret = -ENOMEM;
@@ -49,14 +49,13 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     rbi->blocks_count = dsb->blocks_count;
     rbi->free_inodes_count = dsb->free_inodes_count;
 	rbi->free_blocks_count = dsb->free_blocks_count;
-	rbi->group_table_blocks_count = dsb->group_table_blocks_count;
 	rbi->mtime = ktime_get_real_ns();
 
     sb->s_fs_info = rbi;
 
     brelse(bh);
 
-    /* Create root inode */
+    // set up root inode
     root_inode = ransomfs_iget(sb, 0);
     if (IS_ERR(root_inode)) {
         ret = PTR_ERR(root_inode);

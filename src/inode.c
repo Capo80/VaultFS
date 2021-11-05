@@ -15,8 +15,10 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     struct buffer_head *bh = NULL;
     uint64_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
     uint64_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
-    uint64_t inode_block = 3 + sbi->group_table_blocks_count + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
+    uint64_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
     int ret;
+
+    printk(KERN_INFO "Inode block is at (%lld, %lld)", inode_block, inode_shift);
 
     // TODO check bitmap somewhere here? maybe?
     
@@ -49,9 +51,9 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_sb = sb;
     //inode->i_op = &ransomfs_inode_ops;
 
-    inode->i_mode = le32_to_cpu(cinode->i_mode);
-    i_uid_write(inode, le32_to_cpu(cinode->i_uid));
-    i_gid_write(inode, le32_to_cpu(cinode->i_gid));
+    inode->i_mode = le16_to_cpu(cinode->i_mode);
+    i_uid_write(inode, le16_to_cpu(cinode->i_uid));
+    i_gid_write(inode, le16_to_cpu(cinode->i_gid));
     inode->i_size = le32_to_cpu(cinode->i_size);
     inode->i_ctime.tv_sec = (time64_t) le32_to_cpu(cinode->i_ctime);
     inode->i_ctime.tv_nsec = 0;
@@ -61,9 +63,13 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_mtime.tv_nsec = 0;
     inode->i_blocks = le32_to_cpu(cinode->i_blocks);
 
+    printk(KERN_INFO "Mode is: %u\n", inode->i_mode);
+
     if (S_ISDIR(inode->i_mode)) {
         //ci->dir_block = le32_to_cpu(cinode->dir_block);
-        //inode->i_fop = &ransomfs_dir_ops;
+        printk("This file is a directory\n");
+        inode->i_op = &ransomfs_inode_ops;
+        inode->i_fop = &ransomfs_dir_ops;
     } else if (S_ISREG(inode->i_mode)) {
         //ci->ei_block = le32_to_cpu(cinode->ei_block);
         //inode->i_fop = &ransomfs_file_ops;
@@ -82,3 +88,14 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     return inode;
 
 }
+
+//connect inode to dentry
+struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags)
+{
+	return NULL;
+}
+
+
+static const struct inode_operations ransomfs_inode_ops = {
+    .lookup = ransomfs_lookup,
+};
