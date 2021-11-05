@@ -14,7 +14,7 @@ The disk layout is based on the ext4 FileSystem, the disk is divided in groups a
 
 | ext4 superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
 |:-:|:-:|:-:|:-:|:-:|:-:|
-| 1 block | >= 1 block | 1 block | 1 block | >= 1 block | >= 1 Block |
+| 1 block | 1 block | 1 block | 1 block | 1 block | >= 1 Block |
 
 Sizes and limitations are the same of the ext4 FileSystem with a block size of 4 Kb.
 
