@@ -62,19 +62,26 @@ int write_root_inode(int fd) {
 
 	struct ransomfs_inode root_inode;
 
-    //init empty root extent
+    //init empty file root extent
+    //this extend has an head and a leaf
+    struct ransomfs_extent leaf_extent;
+    leaf_extent.file_block = 0;
+    leaf_extent.len = 1;
+    leaf_extent.data_block = 516; //first datablock of the file system
+
     struct ransomfs_extent_header root_extent;
     root_extent.magic = RANSOMFS_EXTENT_MAGIC;
-    root_extent.entries = 0;
+    root_extent.entries = 1;
     root_extent.max = RANSOMFS_EXTENT_PER_INODE;
     root_extent.depth = 0;
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
 	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user
-	root_inode.i_size = 0; //empty directory
+	root_inode.i_size = RANSOMFS_BLOCK_SIZE; //empty directory still has one block allocated
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
-	root_inode.i_blocks = htole32(0);
-    root_inode.extent_tree[0] = root_extent;
+	root_inode.i_blocks = htole32(1);
+    memcpy(root_inode.extent_tree, &root_extent, sizeof(struct ransomfs_extent_header));
+    memcpy(root_inode.extent_tree + 1, &leaf_extent, sizeof(struct ransomfs_extent_header));
 
 	int ret = write(fd, (char*) &root_inode, sizeof(struct ransomfs_inode));
     if (ret != sizeof(struct ransomfs_inode)) {

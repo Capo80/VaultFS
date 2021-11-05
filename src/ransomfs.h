@@ -65,6 +65,7 @@ struct ransomfs_dir_record {
 
 	uint32_t ino;								//inode number of this record
 	uint16_t name_len;							//len of the filename
+	uint8_t file_type;							//type of file (directory, regular file ...)
 	char filename[RANSOMFS_MAX_FILENAME];		//filename
 
 };
@@ -86,6 +87,7 @@ struct ransomfs_sb_info {
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
 struct ransomfs_inode_info {
+	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
 };
 

@@ -63,7 +63,8 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_mtime.tv_nsec = 0;
     inode->i_blocks = le32_to_cpu(cinode->i_blocks);
 
-    printk(KERN_INFO "Mode is: %u\n", inode->i_mode);
+    //copy extent tree
+    memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*cinode->extent_tree[0].entries);
 
     if (S_ISDIR(inode->i_mode)) {
         //ci->dir_block = le32_to_cpu(cinode->dir_block);
