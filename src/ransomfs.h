@@ -4,6 +4,7 @@
 #define RANSOMFS_MAGIC 							0x42424242
 #define RANSOMFS_EXTENT_MAGIC					0x1727
 #define RANSOMFS_SB_BLOCK_NR 					0
+#define RANSOMFS_GDT_BLOCK_NR					1
 
 //Sytem constants e limitations
 #define RANSOMFS_BLOCK_SIZE 					(1 << 12) /* 4 KiB */
@@ -11,11 +12,14 @@
 #define RANSOMFS_INODES_PER_GROUP				16384
 #define RANSOMFS_INODES_GROUP_BLOCK_COUNT 		512
 #define RANSOMFS_DIR_RECORD_PER_BLOCK			15
+#define RANSOMFS_GROUPDESC_PER_BLOCK			512
 #define RANSOMFS_INODES_PER_BLOCK 				32
 #define RANSOMFS_EXTENT_PER_INODE				10
-#define RANSOMFS_MAX_FILENAME					255
 
+#define RANSOMFS_MAX_FILENAME					255
 #define RANSOMFS_MAX_FOLDER_FILES				65536
+
+#define RANSOMFS_INITIAL_FILE_SPACE				4 //number of blocks we would like to leave free after the initial allocation of a file
 
 struct ransomfs_extent_header {
 	uint16_t magic;     //magic number of an extent struct
@@ -57,7 +61,8 @@ struct ransomfs_group_desc {
 	uint32_t free_blocks_count;
 	uint32_t free_inodes_count;
 	uint16_t flags;
-	uint16_t padding;
+	uint16_t unused;			//pad to fill block exactly
+	uint32_t unused2;
 
 };
 

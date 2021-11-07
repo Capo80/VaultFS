@@ -92,6 +92,22 @@ int write_root_inode(int fd) {
 
 }
 
+int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
+
+    struct ransomfs_group_desc gdt;
+
+    gdt.free_blocks_count = free_blocks;
+    gdt.free_inodes_count = free_inodes;
+
+    int ret = write(fd, (char*) &gdt, sizeof(struct ransomfs_group_desc));
+    if (ret != sizeof(struct ransomfs_group_desc)) {
+        return 0;
+    }
+
+    return ret;
+
+}
+
 int write_padding(int fd, size_t padding_size) {
 
 	char* zeroes = malloc(padding_size);
@@ -156,15 +172,35 @@ int main(int argc, char **argv) {
         goto fclose;
     }
 
-    //TODO write initial descriptor table
+    //Writing group 0 table - one block/inode occupied by root
+    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-1, RANSOMFS_INODES_PER_BLOCK-1)) {
+		perror("group 0 desc table:");
+    	ret =  EXIT_FAILURE;
+		goto free_sb;
+	}
+
+    //write other table
     uint64_t blocks_count = stat_buf.st_size / RANSOMFS_BLOCK_SIZE;
     uint64_t block_desc_count = (blocks_count / RANSOMFS_BLOCKS_PER_GROUP + 1) / ( RANSOMFS_BLOCK_SIZE / sizeof(struct ransomfs_group_desc)) + 1;
-    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*block_desc_count)) {
+    for (int i = 0; i < block_desc_count-1; i++) {
+        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP, RANSOMFS_INODES_PER_BLOCK)) {
+            perror("groups desc table:");
+            ret =  EXIT_FAILURE;
+            goto free_sb;
+        }       
+    }
+
+    //padding until the end of the block
+    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE - block_desc_count*sizeof(struct ransomfs_group_desc))) {
     	perror("group desc write_padding():");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
-    printf("Written %ld block of desc table\n", block_desc_count);
+
+    printf("Written descriptor table block\n");
+
+    //TODO Everything down here shold be done for every group, not only once
+    //     It is fine like this until disk size > 128Gb
 
     //TODO write initial bitmaps (just flip first bit probrably)
 	if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*2)) {
@@ -173,14 +209,25 @@ int main(int argc, char **argv) {
 		goto free_sb;
 	}
 
-    printf("Curr file position: %ld\n", lseek(fd, 0, SEEK_CUR));
+    printf("Written bitmaps\n");
 
-    /* Write root inode */
+    //Write root inode
 	if (!write_root_inode(fd)) {
-		perror("root inode write_padding():");
+		perror("root inode:");
 		ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
+
+    printf("Written root inode\n");
+
+    //Padding until the end of inode table
+    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*RANSOMFS_INODES_GROUP_BLOCK_COUNT - sizeof(struct ransomfs_inode))) {
+		perror("inode table write_padding():");
+    	ret =  EXIT_FAILURE;
+		goto free_sb;
+	}
+
+    printf("Filesystem correctly formatted\n");
 
 free_sb:
     free(sb);

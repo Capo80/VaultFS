@@ -6,7 +6,7 @@
 #include "ransomfs.h"
 
 //recursive function to read and extent tree that keeps track of a direcotry data blocks
-// TODO need some concurrency checks here?
+// TODO need some concurrency checks here? probrably not considering files cannot be deleted
 static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx, struct ransomfs_extent_header *block_head) {
 
     int i = 0, j = 0, off = 0;
