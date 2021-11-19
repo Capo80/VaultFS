@@ -12,8 +12,8 @@ DEFINE_MUTEX(gdt_mutex);
 DEFINE_MUTEX(inode_bitmap_mutex);
 DEFINE_MUTEX(data_bitmap_mutex);
 
-//recursive function that reads the extent tree and finds an inode number
-// TODO pretty much the same as the function that updates the context, is there a better way to do this?
+// recursive function that reads the extent tree and finds an inode number
+// TODO every fucntion that reads the exent tree is the same, is there a better way to do this?
 // returns the inode number if found,  anegative number if not
 static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_header *block_head, const char* to_search) {
 
@@ -21,7 +21,8 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
     struct buffer_head *bh = NULL;
 
     printk(KERN_INFO "Started the search for an inode\n");
-
+    return -1;
+    
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
 
@@ -32,9 +33,9 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
-            curr_leaf = (struct ransomfs_extent*) block_head + i + 1;
+            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
             
-            printk(KERN_INFO "Reding entry %d\n", i);
+            printk(KERN_INFO "Reading entry %d\n", i);
 
             printk(KERN_INFO "Start data block: %d - len: %d\n", curr_leaf->data_block, curr_leaf->len);
                 
@@ -50,11 +51,13 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
                     if (curr_record->ino != 0)
-                        if (strcmp(to_search, curr_record->filename) == 0)
+                        if (strcmp(to_search, curr_record->filename) == 0) {
+                            brelse(bh);
                             return curr_record->ino;
-                    
+                        }
                     curr_record++;
                     off += sizeof(struct ransomfs_dir_record);
+                    break;
                 }
 
                 brelse(bh);
@@ -66,7 +69,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
         struct ransomfs_extent_idx* curr_node;
         for (i = 0; i < block_head->entries; i++) {
             //int ret = 0;
-            curr_node = (struct ransomfs_extent_idx*) block_head + i + 1;
+            curr_node = ((struct ransomfs_extent_idx*) block_head) + i + 1;
             //TODO compelete this
         }
 
@@ -135,7 +138,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_blocks = le32_to_cpu(cinode->i_blocks);
 
     //copy extent tree
-    memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*cinode->extent_tree[0].entries);
+    memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
 
     if (S_ISDIR(inode->i_mode)) {
         //ci->dir_block = le32_to_cpu(cinode->dir_block);
@@ -163,6 +166,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
 
 // look for inode in directory with dentry
 // return NULL on success, the inode will be connected to the dentry
+// if not found connect with NULL
 struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags)
 {
     struct super_block* sb = parent_inode->i_sb;
@@ -180,18 +184,16 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
     ino = find_inode_by_name(sb, ci->extent_tree, child_dentry->d_name.name);
     if (ino >= 0) {
         printk(KERN_INFO "inode for %s found, it is number %d\n", child_dentry->d_name.name, ino);
-
-        //read the new inode from disk and connect it to the dentry
+        //read the new inode from disk
         inode = ransomfs_iget(sb, ino);
-        parent_inode->i_atime = current_time(parent_inode); //update access time
-        mark_inode_dirty(parent_inode);
-        d_add(child_dentry, inode);
-
-    } else {
+    } else
         printk(KERN_INFO "inode for %s not found\n", child_dentry->d_name.name);
-        return ERR_PTR(ino);
-    }
-    
+
+    //update dentry
+    parent_inode->i_atime = current_time(parent_inode);
+    mark_inode_dirty(parent_inode);
+    d_add(child_dentry, inode);
+
 	return NULL;
 }
 
@@ -199,13 +201,19 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 {
     struct super_block* sb;
     struct ransomfs_group_desc* temp;
+    struct inode* inode, disk_inode;
     unsigned long* data_bitmap, *inode_bitmap;
     struct buffer_head* bh;
     unsigned short curr_space;
+    uint32_t ino;
+    int ret;
     uint32_t group_idx, distance = RANSOMFS_GROUPDESC_PER_BLOCK+1, c;
     uint32_t parent_group_idx = dir->i_ino / RANSOMFS_INODES_PER_GROUP;
-    uint32_t data_block_idx, inode_table_idx;
-
+    uint32_t data_block_idx, inode_table_idx, inode_bno, inode_shift;
+    
+    printk(KERN_INFO "Create called\n");
+    return 0;
+    
     // Check filename length
     if (strlen(dentry->d_name.name) > RANSOMFS_MAX_FILENAME)
         return -ENAMETOOLONG;
@@ -224,9 +232,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
             return -EIO;
 
         gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
-        memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);
-
-        
+        memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
     }
 
     //find closest group with free space
@@ -236,7 +242,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
             distance = parent_group_idx - c;
             group_idx = c;                      
         }
-        temp++;
+        c++;
     }
 
     printk(KERN_INFO "Found space for new file at group %u\n", group_idx);
@@ -246,7 +252,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         return -ENOSPC;
 
     //update GDT in memory
-    gdt[c].free_blocks_count--;                //FIXME need concurrency checks here
+    gdt[c].free_blocks_count--;                //FIXME need concurrency checks here (just a __sync with a check on 0)
     gdt[c].free_inodes_count--;
 
     //update GDT on disk
@@ -273,11 +279,11 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     if (curr_space == 0) {
         printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
-        //FIXME we need to roll back the GDT if we fail here (even though its already corrupted)
-        return -ENOSPC;
+        ret = -ENOSPC;
+        goto correct_gdt;
     }
 
-    //update bitmap
+    //update datablock bitmap
     bitmap_fill(data_bitmap + data_block_idx, 1);
     mark_buffer_dirty(bh);
     brelse(bh);
@@ -292,17 +298,68 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, RANSOMFS_BLOCK_SIZE, 0, 1, 0);
 
-    //update bitmap
-    bitmap_fill(data_bitmap + inode_table_idx, 1);
+    //update inode bitmap
+    bitmap_fill(inode_bitmap + inode_table_idx, 1);
     mark_buffer_dirty(bh);
     brelse(bh);
 
     mutex_unlock(&inode_bitmap_mutex);
 
-    //create the new inode
-    // TODO
+    //down here we don't need to worry about concurrency we have already reserved the zones on the disk that we are going to use
+    
+    //get the new inode
+    ino = RANSOMFS_INODES_PER_GROUP*group_idx + inode_table_idx;
+    inode = ransomfs_iget(sb, ino);
+    if (IS_ERR(inode)) {
+        ret = PTR_ERR(inode);
+        goto correct_bitmaps;
+    }
+
+    //initialize the inode
+    inode_init_owner(inode, dir, mode);
+    init_extent_tree((struct ransomfs_inode*) inode, group_idx*RANSOMFS_BLOCKS_PER_GROUP+data_block_idx);
+    inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
+    inode->i_blocks = 1;
+    if (S_ISDIR(mode)) {
+        inode->i_size = RANSOMFS_BLOCK_SIZE;
+        inode->i_fop = &ransomfs_dir_ops;
+        set_nlink(inode, 2); // . and ..
+    } else if (S_ISREG(mode)) {
+        inode->i_size = 0;
+        //node->i_fop = &ransomfs_file_ops
+        //inode->i_mapping->a_ops = &ransomfs_aops;
+        set_nlink(inode, 1);
+    }
+
+    //save inode to disk
+    //inode_bg = inode_table_idx / RANSOMFS_INODES_PER_BLOCK;
+    //inode_shift = inode_table_idx % RANSOMFS_INODES_PER_BLOCK;
+    //bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP+2 + inode_bg);
+    //disk_inode = (struct inode*) bh_>b_data;
+    //memcpy(disk_inode + inode_shift, inode, sizeof(struct inode))
+    
+    //add to directory
+    if (add_file_to_directory(sb, RANSOMFS_INODE(dir)->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
+        dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
+        mark_inode_dirty(inode);
+        mark_inode_dirty(dir);
+        d_instantiate(dentry, inode);
+        goto success;
+    }
+correct_bitmaps:
+    //we failed correct the bitmaps
+    bitmap_zero(inode_bitmap + inode_table_idx, 1);
+    bitmap_zero(data_bitmap + data_block_idx, 1);
+correct_gdt:
+    //we failed correct the gdt
+    gdt[c].free_blocks_count--;                //FIXME need concurrency checks here
+    gdt[c].free_inodes_count--;
+success:
+    iput(inode);
+    return ret;
 }
 
-static const struct inode_operations ransomfs_inode_ops = {
+const struct inode_operations ransomfs_inode_ops = {
     .lookup = ransomfs_lookup,
+    .create = ransomfs_create,
 };

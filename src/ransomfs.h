@@ -96,6 +96,9 @@ struct ransomfs_inode_info {
     struct inode vfs_inode;
 };
 
+/* dir.c */
+int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header *block_head, const unsigned char* filename, uint32_t ino, uint8_t file_type);
+
 
 /* super.c */
 int ransomfs_fill_super(struct super_block *sb, void *data, int silent);
@@ -103,9 +106,12 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent);
 /* inode.c */
 struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino);
 
+/* extent.c */
+void init_extent_tree(struct ransomfs_inode* inode, uint32_t first_block_no);
+
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
-static const struct inode_operations ransomfs_inode_ops;
+extern const struct inode_operations ransomfs_inode_ops;
 
 /* conversions */
 #define RANSOMFS_SB(sb) (sb->s_fs_info)

@@ -61,25 +61,29 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
 int write_root_inode(int fd) {
 
 	struct ransomfs_inode root_inode;
+    memset(&root_inode, 0, sizeof(struct ransomfs_inode));
 
     //init empty file root extent
     //this extend has an head and a leaf
     struct ransomfs_extent leaf_extent;
+    memset(&leaf_extent, 0, sizeof(struct ransomfs_extent));
     leaf_extent.file_block = 0;
-    leaf_extent.len = 1;
-    leaf_extent.data_block = 516; //first datablock of the file system
+    leaf_extent.len = htole16(1);
+    leaf_extent.data_block = htole32(516); //first datablock of the file system
 
     struct ransomfs_extent_header root_extent;
+    memset(&root_extent, 0, sizeof(struct ransomfs_extent_header));
     root_extent.magic = RANSOMFS_EXTENT_MAGIC;
-    root_extent.entries = 1;
+    root_extent.entries = htole16(1);
     root_extent.max = RANSOMFS_EXTENT_PER_INODE;
     root_extent.depth = 0;
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
 	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user
-	root_inode.i_size = RANSOMFS_BLOCK_SIZE; //empty directory still has one block allocated
+	root_inode.i_size = htole32(RANSOMFS_BLOCK_SIZE); //empty directory still has one block allocated
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
 	root_inode.i_blocks = htole32(1);
+    printf("%p\n%p\n", root_inode.extent_tree, root_inode.extent_tree + 1);
     memcpy(root_inode.extent_tree, &root_extent, sizeof(struct ransomfs_extent_header));
     memcpy(root_inode.extent_tree + 1, &leaf_extent, sizeof(struct ransomfs_extent_header));
 
@@ -95,6 +99,7 @@ int write_root_inode(int fd) {
 int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
 
     struct ransomfs_group_desc gdt;
+    memset(&gdt, 0, sizeof(struct ransomfs_group_desc));
 
     gdt.free_blocks_count = free_blocks;
     gdt.free_inodes_count = free_inodes;
@@ -105,6 +110,24 @@ int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
     }
 
     return ret;
+
+}
+
+int write_first_bit_bitmap(int fd) {
+
+    short first_word = 0x8000;
+    int ret = write(fd, &first_word, sizeof(short));
+    if (ret != sizeof(short)) { 
+        return 0;
+    }
+    char* zeroes = malloc(RANSOMFS_BLOCK_SIZE - sizeof(short));
+	memset(zeroes, 0, RANSOMFS_BLOCK_SIZE - sizeof(short));
+	ret = write(fd, zeroes, RANSOMFS_BLOCK_SIZE - sizeof(short));
+	free(zeroes);
+	
+	if (ret != RANSOMFS_BLOCK_SIZE - sizeof(short))
+		return 0;
+	return ret;
 
 }
 
@@ -202,8 +225,13 @@ int main(int argc, char **argv) {
     //TODO Everything down here shold be done for every group, not only once
     //     It is fine like this until disk size > 128Gb
 
-    //TODO write initial bitmaps (just flip first bit probrably)
-	if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*2)) {
+	if (!write_first_bit_bitmap(fd)) {
+		perror("bitmaps write_padding():");
+    	ret =  EXIT_FAILURE;
+		goto free_sb;
+	}
+
+	if (!write_first_bit_bitmap(fd)) {
 		perror("bitmaps write_padding():");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
