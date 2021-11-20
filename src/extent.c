@@ -3,7 +3,7 @@
 
 #include "ransomfs.h"
 
-void init_extent_tree(struct ransomfs_inode* inode, uint32_t first_block_no) {
+void init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no) {
 
     //tree head
     struct ransomfs_extent_header head = {
@@ -20,11 +20,8 @@ void init_extent_tree(struct ransomfs_inode* inode, uint32_t first_block_no) {
         .data_block = first_block_no
     };
 
-    //zero the memory
-    memset(inode->extent_tree, 0, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
-
     //save to inode
     inode->extent_tree[0] = head;
-    inode->extent_tree[1] = *((struct ransomfs_extent_header*) &leaf); //is this the best wayt to do this?
+    inode->extent_tree[1] = *((struct ransomfs_extent_header*) &leaf); //is this the best way to do this?
 
 }

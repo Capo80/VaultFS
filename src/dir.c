@@ -81,7 +81,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
 
     uint16_t i = 0;
     uint32_t j = 0;
-    int off = 0;
+    int off = 0, file_counter = 0;
     struct buffer_head *bh = NULL;
     struct ransomfs_extent* curr_leaf;
     struct ransomfs_dir_record* curr_record;
@@ -106,8 +106,6 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
             //    printk(KERN_INFO "%x\n", ((short*)block_head)[ii]);
             //}
             printk(KERN_INFO "Start data block: %u - len: %u\n", curr_leaf->data_block, curr_leaf->len);
-            
-            return 0;
 
             //iterate over data block of single extent
             for (j = curr_leaf->data_block; j < curr_leaf->data_block + curr_leaf->len; j++) {     
@@ -120,11 +118,14 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
                     if (curr_record->ino != 0) {
-                        if (!dir_emit(ctx, curr_record->filename, RANSOMFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
-                            brelse(bh);
-                            return 0; //failed to emit
+                        if (file_counter >= ctx->pos-2) {
+                            if (!dir_emit(ctx, curr_record->filename, RANSOMFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
+                                brelse(bh);
+                                return 0; //failed to emit
+                            }
+                            ctx->pos++;
                         }
-                        ctx->pos++;
+                        file_counter++;
                     }
                     curr_record++;
                     off += sizeof(struct ransomfs_dir_record);
@@ -145,7 +146,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
 
     }
 
-    return 0;
+    return file_counter;
 }
 
 /*
@@ -172,7 +173,7 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
     if (ctx->pos < 2)
         if (!dir_emit_dots(dir, ctx)) //FIXME: not working, why?
 	        return 0;
-            
+
     //iterate over data blocks with extents
     return read_dir_extent_tree(sb, ctx, ci->extent_tree);
 }

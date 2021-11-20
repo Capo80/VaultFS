@@ -115,7 +115,7 @@ int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
 
 int write_first_bit_bitmap(int fd) {
 
-    short first_word = 0x8000;
+    short first_word = 0x0001;
     int ret = write(fd, &first_word, sizeof(short));
     if (ret != sizeof(short)) { 
         return 0;

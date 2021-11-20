@@ -39,8 +39,13 @@ static struct file_system_type ransomfs_file_system_type = {
 
 static int __init ransomfs_init(void)
 {
+    int ret = ransomfs_init_inode_cache();
+    if (ret) {
+        printk(KERN_ERR "inode cache creation failed\n");
+        return ret;
+    }
 
-    int ret = register_filesystem(&ransomfs_file_system_type);
+    ret = register_filesystem(&ransomfs_file_system_type);
     if (ret) {
         printk(KERN_ERR "register_filesystem() failed\n");
         return ret;
@@ -56,7 +61,7 @@ static void __exit ransomfs_exit(void)
     if (ret)
         printk(KERN_ERR "unregister_filesystem() failed\n");
 
-    //ransomfs_destroy_inode_cache();
+    ransomfs_destroy_inode_cache();
 
     printk(KERN_INFO"module unloaded\n");
 }

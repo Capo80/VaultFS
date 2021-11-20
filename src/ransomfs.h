@@ -102,12 +102,14 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
 /* super.c */
 int ransomfs_fill_super(struct super_block *sb, void *data, int silent);
+int ransomfs_init_inode_cache(void);
+void ransomfs_destroy_inode_cache(void);
 
 /* inode.c */
 struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino);
 
 /* extent.c */
-void init_extent_tree(struct ransomfs_inode* inode, uint32_t first_block_no);
+void init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
 
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
