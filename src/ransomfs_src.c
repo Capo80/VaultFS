@@ -25,7 +25,7 @@ void ransomfs_kill_sb(struct super_block *sb)
 
     kill_block_super(sb);
 
-    pr_info("unmounted disk\n");
+    printk(KERN_INFO"unmounted disk\n");
 }
 
 static struct file_system_type ransomfs_file_system_type = {

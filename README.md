@@ -41,9 +41,16 @@ No tests have been implemented so far.
 | :heavy_check_mark: | FileSystem registration | |
 | :heavy_check_mark: | Mounting and Unmounting | |
 | :heavy_check_mark: | Directory Read | |
-| :gear: | File Creation | |
-| :x: | File Write | |
+| :heavy_check_mark: | File/Directory Creation | |
+| :gear: | File Write | |
 | :x: | File Read | |
 | :x: | Write Protection | |
 | :x: | Umount Protection | |
 | :x: | Block Device Protection | |
+
+## TODOs
+
+| State | Task | Difficulty |
+|:-:|:-|:-:|
+|:x:| Create some sort of callback mechanism for traversing of the extent tree | 4/5 |
+|:x:| Implement concurrency management on the cached gdt | 1/5 |

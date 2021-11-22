@@ -41,9 +41,10 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
                 curr_record = (struct ransomfs_dir_record*) bh->b_data;
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
+                    
                     //async add file to folder
                     if (curr_record->ino == 0)
-                        if (__sync_bool_compare_and_swap(&curr_record->ino,0, ino)) {
+                        if (__sync_bool_compare_and_swap(&curr_record->ino, 0, ino)) {
                             curr_record->name_len = strlen(filename);
                             memcpy(curr_record->filename, filename, curr_record->name_len+1);
                             curr_record->file_type = file_type;

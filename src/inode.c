@@ -21,7 +21,6 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
     struct buffer_head *bh = NULL;
 
     printk(KERN_INFO "Started the search for an inode\n");
-    return -1;
     
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
@@ -50,6 +49,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
 
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
+                    //printk(KERN_INFO "Searching off %d ino %d", off, curr_record->ino);
                     if (curr_record->ino != 0)
                         if (strcmp(to_search, curr_record->filename) == 0) {
                             brelse(bh);
@@ -57,7 +57,6 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                         }
                     curr_record++;
                     off += sizeof(struct ransomfs_dir_record);
-                    break;
                 }
 
                 brelse(bh);
@@ -125,7 +124,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
 
     inode->i_ino = ino;
     inode->i_sb = sb;
-    inode->i_op = &ransomfs_inode_ops;
+    //inode->i_op = &ransomfs_inode_ops;
 
     inode->i_mode = le16_to_cpu(cinode->i_mode);
     i_uid_write(inode, le16_to_cpu(cinode->i_uid));
@@ -145,6 +144,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
 
     if (S_ISDIR(inode->i_mode)) {
+        inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
     } else if (S_ISREG(inode->i_mode)) {
         //ci->ei_block = le32_to_cpu(cinode->ei_block);
@@ -201,15 +201,16 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
 static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
     struct super_block* sb = dir->i_sb;
-    struct inode* inode, disk_inode;
+    struct inode* inode;
+    struct ransomfs_inode_info* new_info, *dir_info;
     unsigned long* data_bitmap, *inode_bitmap;
     struct buffer_head* bh;
     unsigned short curr_space;
     uint32_t ino;
-    int ret;
+    int ret = 0;
     uint32_t group_idx, distance = RANSOMFS_GROUPDESC_PER_BLOCK+1, c;
     uint32_t parent_group_idx = dir->i_ino / RANSOMFS_INODES_PER_GROUP;
-    uint32_t data_block_idx, inode_table_idx, inode_bno, inode_shift;
+    uint32_t data_block_idx = 0, inode_table_idx = 0;
     
     printk(KERN_INFO "Create called\n");
     
@@ -285,7 +286,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     }
 
     //update datablock bitmap
-    bitmap_fill(data_bitmap + data_block_idx, 1);
+    bitmap_set(data_bitmap, data_block_idx, 1);
     mark_buffer_dirty(bh);
     brelse(bh);
     
@@ -302,7 +303,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     printk(KERN_INFO "Found space for inode at index %u\n", inode_table_idx);
 
     //update inode bitmap
-    bitmap_fill(inode_bitmap + inode_table_idx, 1);
+    bitmap_set(inode_bitmap, inode_table_idx, 1);
     mark_buffer_dirty(bh);
     brelse(bh);
 
@@ -322,15 +323,19 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     //initialize the inode
     inode_init_owner(inode, dir, mode);
-    init_extent_tree((struct ransomfs_inode_info*) inode, group_idx*RANSOMFS_BLOCKS_PER_GROUP+data_block_idx);
+    new_info = RANSOMFS_INODE(inode);
+    init_extent_tree(new_info, group_idx*RANSOMFS_BLOCKS_PER_GROUP + 4 + 512 + data_block_idx);
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
     inode->i_blocks = 1;
+    inode->i_ino = ino;
     if (S_ISDIR(mode)) {
+        printk("Creating a directory\n");
         inode->i_size = RANSOMFS_BLOCK_SIZE;
-        printk("size\n");
+        inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
         set_nlink(inode, 2); // . and ..
     } else if (S_ISREG(mode)) {
+        printk("Creating aregular file\n");
         inode->i_size = 0;
         //node->i_fop = &ransomfs_file_ops
         //inode->i_mapping->a_ops = &ransomfs_aops;
@@ -338,16 +343,10 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     }
 
     printk(KERN_INFO "Inode inizialized\n");
-
-    //save inode to disk
-    //inode_bg = inode_table_idx / RANSOMFS_INODES_PER_BLOCK;
-    //inode_shift = inode_table_idx % RANSOMFS_INODES_PER_BLOCK;
-    //bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP+2 + inode_bg);
-    //disk_inode = (struct inode*) bh_>b_data;
-    //memcpy(disk_inode + inode_shift, inode, sizeof(struct inode))
     
     //add to directory
-    if (add_file_to_directory(sb, RANSOMFS_INODE(dir)->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
+    dir_info = RANSOMFS_INODE(dir);
+    if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
         dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);
@@ -355,21 +354,27 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         printk(KERN_INFO "Inode added to directory - Creation SUCCESS\n");
         goto success;
     }
+
 correct_bitmaps:
     //we failed correct the bitmaps
-    bitmap_zero(inode_bitmap + inode_table_idx, 1);
-    bitmap_zero(data_bitmap + data_block_idx, 1);
+    bitmap_clear(inode_bitmap, inode_table_idx, 1);
+    bitmap_clear(data_bitmap, data_block_idx, 1);
 correct_gdt:
     //we failed correct the gdt
     gdt[c].free_blocks_count++;                //FIXME need concurrency checks here
     gdt[c].free_inodes_count++;
 success:
     iput(inode);
-    iput(dir);
     return ret;
 }
 
-const struct inode_operations ransomfs_inode_ops = {
+
+static int ransomfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode) {
+    return ransomfs_create(dir, dentry, mode | S_IFDIR, 0);
+}
+
+const struct inode_operations ransomfs_dir_inode_ops = {
     .lookup = ransomfs_lookup,
     .create = ransomfs_create,
+    .mkdir = ransomfs_mkdir
 };

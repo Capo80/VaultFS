@@ -47,13 +47,13 @@ struct ransomfs_inode {
     uint16_t i_mode;   /* File mode */
     uint16_t i_uid;    /* Owner id */
     uint16_t i_gid;    /* Group id */
+	uint16_t unused;   /* pad size to 128 */
     uint32_t i_size;   /* Size in bytes */
     uint32_t i_ctime;  /* Inode change time */
     uint32_t i_atime;  /* Access time */
     uint32_t i_mtime;  /* Modification time */
     uint32_t i_blocks; /* Block count */
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
-	uint16_t unused;   /* pad size to 128 */
 };
 
 struct ransomfs_group_desc {
@@ -113,7 +113,7 @@ void init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no
 
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
-extern const struct inode_operations ransomfs_inode_ops;
+extern const struct inode_operations ransomfs_dir_inode_ops;
 
 /* conversions */
 #define RANSOMFS_SB(sb) (sb->s_fs_info)

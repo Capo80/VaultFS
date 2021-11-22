@@ -53,6 +53,11 @@ static int ransomfs_write_inode(struct inode *inode,
     uint32_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
     uint32_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
 
+    printk("Write inode called\n");
+    printk("\tino: %u\n", ino);
+    printk("\tblock: %u\n", inode_block);
+    printk("\tshift: %u\n", inode_shift);
+    
     if (ino >= sbi->inodes_count)
         return 0;
 
@@ -60,6 +65,7 @@ static int ransomfs_write_inode(struct inode *inode,
     if (!bh)
         return -EIO;
 
+    printk("size: %ld\n", sizeof(struct ransomfs_inode));
     disk_inode = (struct ransomfs_inode *) bh->b_data;
     disk_inode += inode_shift;
 
