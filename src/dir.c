@@ -172,7 +172,7 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
     
     // . and ..
     if (ctx->pos < 2)
-        if (!dir_emit_dots(dir, ctx)) //FIXME: not working, why?
+        if (!dir_emit_dots(dir, ctx)) //FIXME: not working for root, why?
 	        return 0;
 
     //iterate over data blocks with extents

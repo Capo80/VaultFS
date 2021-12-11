@@ -7,7 +7,7 @@
 #define RANSOMFS_GDT_BLOCK_NR					1
 
 //Sytem constants e limitations
-#define RANSOMFS_BLOCK_SIZE 					(1 << 12) /* 4 KiB */
+#define RANSOMFS_BLOCK_SIZE 					(1 << 12) // 4 KB
 #define RANSOMFS_BLOCKS_PER_GROUP				32768
 #define RANSOMFS_INODES_PER_GROUP				16384
 #define RANSOMFS_INODES_GROUP_BLOCK_COUNT 		512
@@ -16,6 +16,7 @@
 #define RANSOMFS_INODES_PER_BLOCK 				32
 #define RANSOMFS_EXTENT_PER_INODE				10
 
+#define RANSOMFS_MAX_FILESIZE					RANSOMFS_BLOCKS_PER_GROUP*RANSOMFS_BLOCK_SIZE // 128 GB
 #define RANSOMFS_MAX_FILENAME					255
 #define RANSOMFS_MAX_FOLDER_FILES				65536
 
@@ -91,6 +92,9 @@ struct ransomfs_sb_info {
 
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
+static DEFINE_MUTEX(data_bitmap_mutex);
+extern struct ransomfs_group_desc* gdt;
+
 struct ransomfs_inode_info {
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
@@ -109,11 +113,16 @@ void ransomfs_destroy_inode_cache(void);
 struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino);
 
 /* extent.c */
-void init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
+void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
+uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
+uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
 
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
+extern const struct file_operations ransomfs_file_ops;
 extern const struct inode_operations ransomfs_dir_inode_ops;
+extern const struct inode_operations ransomdfs_file_inode_ops;
+extern const struct address_space_operations ransomfs_aops;
 
 /* conversions */
 #define RANSOMFS_SB(sb) (sb->s_fs_info)

@@ -96,13 +96,58 @@ static void ransomfs_put_super(struct super_block *sb)
     }
 }
 
+static int ransomfs_statfs(struct dentry *dentry, struct kstatfs *stat)
+{
+    struct super_block *sb = dentry->d_sb;
+    struct ransomfs_sb_info *sbi = RANSOMFS_SB(sb);
+
+    stat->f_type = RANSOMFS_MAGIC;
+    stat->f_bsize = RANSOMFS_BLOCK_SIZE;
+    stat->f_blocks = sbi->blocks_count;
+    stat->f_bfree = sbi->free_blocks_count;
+    stat->f_bavail = sbi->free_blocks_count;
+    stat->f_files = sbi->inodes_count - sbi->free_inodes_count;
+    stat->f_ffree = sbi->free_inodes_count;
+    stat->f_namelen = RANSOMFS_MAX_FILENAME;
+
+    return 0;
+}
+
+static int ransomfs_sync_fs(struct super_block *sb, int wait)
+{
+    struct ransomfs_sb_info *sbi = RANSOMFS_SB(sb);
+    struct ransomfs_sb_info *disk_sb;
+
+    // save super block
+    struct buffer_head *bh = sb_bread(sb, 0);
+    if (!bh)
+        return -EIO;
+
+    disk_sb = (struct ransomfs_sb_info *) bh->b_data;
+
+    disk_sb->blocks_count = sbi->blocks_count;
+    disk_sb->inodes_count = sbi->inodes_count;
+    disk_sb->free_inodes_count = sbi->free_inodes_count;
+    disk_sb->free_blocks_count = sbi->free_blocks_count;
+
+    mark_buffer_dirty(bh);
+    if (wait)
+        sync_dirty_buffer(bh);
+    brelse(bh);
+
+    //TODO sync GDT down here?
+
+    return 0;
+}
+
 
 static struct super_operations ransomfs_super_ops = {
     .put_super = ransomfs_put_super,
     .alloc_inode = ransomfs_alloc_inode,
     .destroy_inode = ransomfs_destroy_inode,
     .write_inode = ransomfs_write_inode,
-    .statfs = simple_statfs,
+    .sync_fs = ransomfs_sync_fs,
+    .statfs = ransomfs_statfs,
 };
 
 /* Fill the struct superblock from partition superblock */

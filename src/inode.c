@@ -10,7 +10,6 @@
 struct ransomfs_group_desc* gdt = NULL;
 DEFINE_MUTEX(gdt_mutex);
 DEFINE_MUTEX(inode_bitmap_mutex);
-DEFINE_MUTEX(data_bitmap_mutex);
 
 // recursive function that reads the extent tree and finds an inode number
 // TODO every fucntion that reads the exent tree is the same, is there a better way to do this?
@@ -147,9 +146,9 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
     } else if (S_ISREG(inode->i_mode)) {
-        //ci->ei_block = le32_to_cpu(cinode->ei_block);
-        //inode->i_fop = &ransomfs_file_ops;
-        //inode->i_mapping->a_ops = &ransomfs_aops;
+        inode->i_op = &ransomdfs_file_inode_ops;
+        inode->i_fop = &ransomfs_file_ops;
+        inode->i_mapping->a_ops = &ransomfs_aops;
     } else if (S_ISLNK(inode->i_mode)) {
         //strncpy(ci->i_data, cinode->i_data, sizeof(ci->i_data));
         //inode->i_link = ci->i_data;
@@ -324,7 +323,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //initialize the inode
     inode_init_owner(inode, dir, mode);
     new_info = RANSOMFS_INODE(inode);
-    init_extent_tree(new_info, group_idx*RANSOMFS_BLOCKS_PER_GROUP + 4 + 512 + data_block_idx);
+    ransomfs_init_extent_tree(new_info, group_idx*RANSOMFS_BLOCKS_PER_GROUP + 4 + 512 + data_block_idx);
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
     inode->i_blocks = 1;
     inode->i_ino = ino;
@@ -335,10 +334,11 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         inode->i_fop = &ransomfs_dir_ops;
         set_nlink(inode, 2); // . and ..
     } else if (S_ISREG(mode)) {
-        printk("Creating aregular file\n");
+        printk("Creating a regular file\n");
         inode->i_size = 0;
-        //node->i_fop = &ransomfs_file_ops
-        //inode->i_mapping->a_ops = &ransomfs_aops;
+        inode->i_op = &ransomdfs_file_inode_ops;
+        inode->i_fop = &ransomfs_file_ops;
+        inode->i_mapping->a_ops = &ransomfs_aops;
         set_nlink(inode, 1);
     }
 
@@ -364,7 +364,6 @@ correct_gdt:
     gdt[c].free_blocks_count++;                //FIXME need concurrency checks here
     gdt[c].free_inodes_count++;
 success:
-    iput(inode);
     return ret;
 }
 
@@ -377,4 +376,9 @@ const struct inode_operations ransomfs_dir_inode_ops = {
     .lookup = ransomfs_lookup,
     .create = ransomfs_create,
     .mkdir = ransomfs_mkdir
+};
+
+const struct inode_operations ransomdfs_file_inode_ops = {
+    .lookup = ransomfs_lookup,
+    .create = ransomfs_create,
 };

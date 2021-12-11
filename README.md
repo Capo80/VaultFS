@@ -42,8 +42,8 @@ No tests have been implemented so far.
 | :heavy_check_mark: | Mounting and Unmounting | |
 | :heavy_check_mark: | Directory Read | |
 | :heavy_check_mark: | File/Directory Creation | |
-| :gear: | File Write | |
-| :x: | File Read | |
+| :heavy_check_mark: | File Write | |
+| :heavy_check_mark: | File Read | |
 | :x: | Write Protection | |
 | :x: | Umount Protection | |
 | :x: | Block Device Protection | |

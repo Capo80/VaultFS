@@ -83,7 +83,6 @@ int write_root_inode(int fd) {
 	root_inode.i_size = htole32(RANSOMFS_BLOCK_SIZE); //empty directory still has one block allocated
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
 	root_inode.i_blocks = htole32(1);
-    printf("%p\n%p\n", root_inode.extent_tree, root_inode.extent_tree + 1);
     memcpy(root_inode.extent_tree, &root_extent, sizeof(struct ransomfs_extent_header));
     memcpy(root_inode.extent_tree + 1, &leaf_extent, sizeof(struct ransomfs_extent_header));
 
