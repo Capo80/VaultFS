@@ -15,13 +15,15 @@
 #define RANSOMFS_GROUPDESC_PER_BLOCK			512
 #define RANSOMFS_INODES_PER_BLOCK 				32
 #define RANSOMFS_EXTENT_PER_INODE				10
+#define RANSOMFS_EXTENT_PER_BLOCK				408
 
-#define RANSOMFS_MAX_FILESIZE					RANSOMFS_BLOCKS_PER_GROUP*RANSOMFS_BLOCK_SIZE // 128 GB
 #define RANSOMFS_MAX_FILENAME					255
 #define RANSOMFS_MAX_FOLDER_FILES				65536
+#define RANSOMFS_MAX_DEPTH						5
 
 #define RANSOMFS_INITIAL_FILE_SPACE				4 //number of blocks we would like to leave free after the initial allocation of a file
 
+#pragma pack(2)
 struct ransomfs_extent_header {
 	uint16_t magic;     //magic number of an extent struct
 	uint16_t entries;	//number of entries following the header
@@ -30,12 +32,15 @@ struct ransomfs_extent_header {
 	uint16_t unused;	//to make it the same length as the other structs
 };
 
+
+#pragma pack(2)
 struct ransomfs_extent_idx {
 	uint32_t file_block;		//idx of the block that this index starts to cover
 	uint32_t leaf_block;		//idx of the block containing the lower level extent
 	uint16_t unused;			//to make it the same length as the other structs
 };
 
+#pragma pack(2)
 struct ransomfs_extent {
 
 	uint32_t file_block;		//idx of the block that this index starts to cover
@@ -90,6 +95,12 @@ struct ransomfs_sb_info {
 
 };
 
+typedef struct block_pos {
+	uint32_t group_idx;
+	uint32_t block_idx;
+	char error;
+} block_pos_t;
+
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
 static DEFINE_MUTEX(data_bitmap_mutex);
@@ -111,11 +122,12 @@ void ransomfs_destroy_inode_cache(void);
 
 /* inode.c */
 struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino);
+block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_group_idx, uint32_t block_count);
 
 /* extent.c */
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
 uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
-uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
+uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_block);
 
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
@@ -125,6 +137,8 @@ extern const struct inode_operations ransomdfs_file_inode_ops;
 extern const struct address_space_operations ransomfs_aops;
 
 /* conversions */
+#define RANSOMFS_POS_TO_PHYS(g_idx, b_idx) \
+	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP + (g_idx+1)*(RANSOMFS_INODES_GROUP_BLOCK_COUNT + 2) + b_idx;
 #define RANSOMFS_SB(sb) (sb->s_fs_info)
 #define RANSOMFS_INODE(inode) \
     (container_of(inode, struct ransomfs_inode_info, vfs_inode))

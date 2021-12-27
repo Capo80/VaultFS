@@ -45,15 +45,63 @@ uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, 
 
 }
 
+block_pos_t ransomfs_allocate_tree_node(struct super_block* sb, unsigned short depth, uint32_t initial_logical_block, uint32_t initial_phys_block) {
 
-//allocares a new block into the exent trying trying to find space that is close to the last leaf group idx
-uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no) {
+    block_pos_t new_block_pos;
+    struct buffer_head* bh;
+    struct ransomfs_extent_header* curr_head;
+    struct ransomfs_extent_idx* curr_idx;
+    uint32_t phys_block_no;
+    printk(KERN_INFO "Allocating a new tree block with depth %d\n", depth);
+    
+    //we need depth+1 blocks for the tree
+    //TODO they don't need to be contiguos
+    new_block_pos = ransomfs_get_free_blocks(sb, initial_phys_block, depth+1);
+    if (new_block_pos.error == 1)
+        return new_block_pos;
+
+    //write all depth > 0 nodes
+    phys_block_no = RANSOMFS_POS_TO_PHYS(new_block_pos.group_idx, new_block_pos.block_idx);
+    while (depth > 0) {
+        bh = sb_bread(sb, phys_block_no+depth);
+        curr_head = (struct ransomfs_extent_header*) bh->b_data;
+        curr_head->magic = RANSOMFS_EXTENT_MAGIC;
+        curr_head->depth = cpu_to_le16(depth);
+        curr_head->max = cpu_to_le16(RANSOMFS_EXTENT_PER_BLOCK);
+        curr_head->entries = 1;
+
+        curr_idx = (struct ransomfs_extent_idx*) curr_head + 1;
+        curr_idx->file_block = cpu_to_le32(initial_logical_block);
+        curr_idx->leaf_block = cpu_to_le32(phys_block_no+depth-1);
+        mark_buffer_dirty(bh);
+        brelse(bh);
+
+        depth--;
+    }
+    
+    //write depth = 0 node - depth 0 does not have an idx
+    bh = sb_bread(sb, phys_block_no+depth);
+    curr_head = (struct ransomfs_extent_header*) bh->b_data;
+    curr_head->magic = RANSOMFS_EXTENT_MAGIC;
+    curr_head->depth = 0;
+    curr_head->max = cpu_to_le16(RANSOMFS_EXTENT_PER_BLOCK);
+    curr_head->entries = 0;
+    mark_buffer_dirty(bh);
+    brelse(bh);
+    
+    return new_block_pos;
+}
+
+//allocates a new block into the exent trying trying to find space that is close to the last leaf group idx
+uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_logical_block, uint32_t initial_phys_block) {
 
     uint16_t i = 0, c;
-    uint32_t phys_block_no, group_idx, last_group_idx, last_phys_block_no, distance, nr_new_blocks;
+    uint32_t phys_block_no = 0, group_idx, last_phys_block_no, nr_new_blocks, temp;
     uint32_t curr_alloc = 0;
     struct buffer_head* bh;
     struct ransomfs_extent* new_leaf, *last_leaf;
+    struct ransomfs_extent_header* new_block_head;
+    block_pos_t new_block_pos;
     unsigned long* data_bitmap;
 
     printk(KERN_INFO "Allocating new logical block: %d\n", logical_block_no);
@@ -64,133 +112,201 @@ uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_ext
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         if (block_head->entries == block_head->max) {
-            //TODO allocate new level
+            //no more space
+            return 0;
         } else {
+            
+            if (block_head->entries != 0) {
+                last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
 
-            last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
-
-            last_phys_block_no = last_leaf->data_block + last_leaf->len;
-            group_idx = last_phys_block_no % RANSOMFS_BLOCKS_PER_GROUP;
-            nr_new_blocks = last_leaf->file_block + last_leaf->len - logical_block_no;
-
-            if (nr_new_blocks - logical_block_no < 0) {
+                last_phys_block_no = last_leaf->data_block + last_leaf->len;
+                group_idx = last_phys_block_no % RANSOMFS_BLOCKS_PER_GROUP;
+                nr_new_blocks = logical_block_no - (last_leaf->file_block + last_leaf->len) + 1;
+            } else {
+                nr_new_blocks = logical_block_no - initial_logical_block + 1;
+            }
+            if (nr_new_blocks < 0) {
                 printk(KERN_INFO "The block is already allocated\n");
                 return ransomfs_exent_search_block(block_head, logical_block_no);
             }
 
+            printk("Allocating %d blocks\n", nr_new_blocks);
+
             //not sure how many blocks we should allocate - for now only 1 but it may be better to allocatare more at the time
-            //TODO maybe do a function for this, there is similar code in the inode file
-
-            //read gdt if necessary
-            if (gdt == NULL) {
-                bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
-                if (!bh)
-                    return -EIO;
-
-                gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
-                memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
-            }
-
-            //find closest group with free space
-            c = 0;
-            while (c < RANSOMFS_GROUPDESC_PER_BLOCK) {  //can be done faster but gdt is very small so not needed i think
-                if (gdt[c].free_blocks_count >= nr_new_blocks && last_group_idx - c < distance) {
-                    distance = last_group_idx - c;
-                    group_idx = c;                      
-                }
-                c++;
-            }
-
-            printk(KERN_INFO "Found space for new block at group %u\n", group_idx);
-            
-            //no space left
-            if (distance == RANSOMFS_GROUPDESC_PER_BLOCK+1)
-                return -ENOSPC;
-
-            //update GDT in memory
-            gdt[c].free_blocks_count -= nr_new_blocks;                //FIXME need concurrency checks here (just a __sync with a check on 0)
-
-            //update GDT on disk
-            bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
-            memcpy(bh->b_data, gdt, RANSOMFS_BLOCK_SIZE); //TODO we don't need to do this every time, just every now and then
-            mark_buffer_dirty(bh);                        //     to prevent data loss in case of failures
-            brelse(bh);
-
-            mutex_lock_interruptible(&data_bitmap_mutex);
-
-            //here we know there is enough space we just need to find it
-            //look for contiguos blocks first - if we can't find it, look for smaller spaces
-
-            //load data bitmap from disk
-            bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP);
-            data_bitmap = (unsigned long*) bh->b_data;
-
-            printk("bitmap: %lx", *data_bitmap);
-
-            while (nr_new_blocks > 0 && curr_alloc < nr_new_blocks) {    
-                phys_block_no = bitmap_find_next_zero_area(data_bitmap, RANSOMFS_BLOCK_SIZE, 0, nr_new_blocks, 0);
-                if (phys_block_no < RANSOMFS_BLOCK_SIZE) {
-
+            temp = nr_new_blocks;
+            while (nr_new_blocks > 0 && curr_alloc < temp) { 
+                printk(KERN_INFO "looking for %d blocks\n", nr_new_blocks);   
+                new_block_pos = ransomfs_get_free_blocks(sb, initial_phys_block, nr_new_blocks);
+                if (new_block_pos.error == 0) {
+                    
+                    //get real phys block number
+                    phys_block_no = RANSOMFS_POS_TO_PHYS(new_block_pos.group_idx, new_block_pos.block_idx);
                     printk(KERN_INFO "Found %d free blocks at index %u\n", nr_new_blocks, phys_block_no);
 
                     //found space
                     curr_alloc += nr_new_blocks;
 
-                    //update datablock bitmap
-                    bitmap_set(data_bitmap, phys_block_no, nr_new_blocks);
-                    mark_buffer_dirty(bh);
-                    brelse(bh);
-                    
                     //add new leaf to exent tree
                     if (block_head->entries == block_head->max) {
-                        //TODO allocate new block for exent tree
+                        //no more space
+                        //deallocate block
                         gdt[c].free_blocks_count += nr_new_blocks;
-                        return -ENOSPC;
-                    }
-                    last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
-                    new_leaf = (struct ransomfs_extent*) &block_head[block_head->entries+1];
-                    new_leaf->file_block = last_leaf->file_block + last_leaf->len;
-                    new_leaf->len = nr_new_blocks;
-                    new_leaf->data_block = phys_block_no;
+                        bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
+                        data_bitmap = (unsigned long*) bh->b_data;
+                        mutex_lock_interruptible(&data_bitmap_mutex);
+                        bitmap_clear(data_bitmap, new_block_pos.block_idx, nr_new_blocks);
+                        mark_buffer_dirty(bh);
+                        brelse(bh);
+                        mutex_unlock(&data_bitmap_mutex);
 
-                    //update head
-                    block_head->entries++;
+                        return 0;
+                    }
+
+                    last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
+                    if (block_head->entries != 0 && last_leaf->data_block + last_leaf->len == phys_block_no) {
+                        last_leaf->len += nr_new_blocks;
+                    } else {
+                        new_leaf = (struct ransomfs_extent*) &block_head[block_head->entries+1];
+                        new_leaf->file_block = cpu_to_le32(last_leaf->file_block + last_leaf->len);
+                        new_leaf->len = cpu_to_le16(nr_new_blocks);
+                        new_leaf->data_block = cpu_to_le32(phys_block_no);
+
+                        //save actual block numb to return
+                        phys_block_no = phys_block_no + nr_new_blocks - 1;
+
+                        //update head
+                        block_head->entries++;
+                    }
 
                 } else {
                     //cloud not find space - look for smaller intervals
                     nr_new_blocks--;
                     
-                    printk(KERN_INFO "Clould not fined %d free blocks\n", nr_new_blocks);
+                    printk(KERN_INFO "Clould not find %d free blocks\n", nr_new_blocks);
                 }
 
             }
 
+
             if (nr_new_blocks <= 0) {
-                printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
-                gdt[c].free_blocks_count += nr_new_blocks;
+                //we have no space left
                 return -ENOSPC;
             }
-            
-            mutex_unlock(&data_bitmap_mutex);
 
+            return phys_block_no;
         }
-
-
     } else {
-        //tree has depth zero call this function again at lower levels
+        //tree has depth > zero call this function again at lower levels
         struct ransomfs_extent_idx* curr_node;
+        uint32_t ret = 0;
         for (i = 0; i < block_head->entries; i++) {
-            //int ret = 0;
+            
+            printk(KERN_INFO"Entering entry %d/%d", i, block_head->entries);
             curr_node = (struct ransomfs_extent_idx*) block_head + i + 1;
-            //TODO compelete this
+
+            printk(KERN_INFO"Reading block %d", curr_node->leaf_block);
+            bh = sb_bread(sb, curr_node->leaf_block);
+            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+
+            //check magic
+            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                printk(KERN_ERR "FATAL ERROR: Currupted exent tree\n");
+                return -ENOTRECOVERABLE;
+            }
+
+            //call again woth new block head
+            ret = ransomfs_allocate_new_block_rec(sb, new_block_head, logical_block_no, curr_node->file_block, curr_node->leaf_block);
+
+            if (ret > 0) { 
+                //operation was successful, we can stop here   
+                mark_buffer_dirty(bh);
+                brelse(bh);
+                return ret;
+            }
+
+            //operation failed try again with next node
+            brelse(bh);
         }
 
-    }
+        //we failed at each node - try to allocate a new block at this level
+        if (block_head->entries == block_head->max)
+            return 0; //we cant
+        else {
 
-    return 0;
+            new_block_pos = ransomfs_allocate_tree_node(sb, block_head->depth-1, initial_logical_block, initial_phys_block);
+            if (new_block_pos.error == 1)
+                return 0; //failed to allocate
+
+            printk(KERN_INFO "new tree allocated\n");
+
+            //get real phys block number
+            phys_block_no = group_idx*RANSOMFS_BLOCKS_PER_GROUP + RANSOMFS_INODES_GROUP_BLOCK_COUNT + 4 + new_block_pos.block_idx;
+            
+            //update entry
+            curr_node = (struct ransomfs_extent_idx*) &block_head[block_head->entries+1];
+            last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
+            curr_node->file_block = cpu_to_le32(last_leaf->file_block + last_leaf->len);
+            curr_node->leaf_block = cpu_to_le32(phys_block_no);
+
+            //update header
+            block_head->entries++;
+
+            //new tree allocated rerun this funcion on the block head again - this time we will have space
+            return ransomfs_allocate_new_block_rec(sb, block_head, logical_block_no, initial_logical_block, initial_phys_block);
+
+        }
+        return ret;
+    }
 
 }
 
+uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_phys_block) {
+
+    block_pos_t new_block_pos;
+    uint32_t phys_block_no;
+    uint16_t original_depth = block_head->depth;
+    uint32_t original_file_block;
+    struct ransomfs_extent_idx* curr_idx;
+    struct ransomfs_extent_header* old_head;
+    uint16_t original_max = block_head->max;
+    struct buffer_head* bh;
+
+    //check if we have space in this head (and if it not the max depth)
+    if (block_head->entries == block_head->max && block_head->depth < RANSOMFS_MAX_DEPTH) {
+        
+        //if we don't we move the current head to a new block and we init another head of depth + 1
+        new_block_pos = ransomfs_get_free_blocks(sb, initial_phys_block, 1);
+        if (new_block_pos.error == 1)
+            return new_block_pos.group_idx; //we failed return error
+
+        //move
+        phys_block_no = RANSOMFS_POS_TO_PHYS(new_block_pos.group_idx, new_block_pos.block_idx);
+        printk(KERN_INFO"Moving tree to %d\n", phys_block_no);
+        bh = sb_bread(sb, phys_block_no);
+
+        memcpy(bh->b_data, block_head, sizeof(struct ransomfs_extent_header)*(block_head->max+1));
+        old_head = (struct ransomfs_extent_header*) bh->b_data;
+        old_head->max = RANSOMFS_EXTENT_PER_BLOCK;
+
+        mark_buffer_dirty(bh);
+        brelse(bh);
+
+        //update
+        curr_idx = (struct ransomfs_extent_idx*) block_head + 1;
+        original_file_block = curr_idx->file_block;
+        memset(block_head, 0, sizeof(struct ransomfs_extent_header)*(block_head->max+1));
+        block_head->magic = RANSOMFS_EXTENT_MAGIC;
+        block_head->depth = original_depth+1;
+        block_head->max = original_max;
+        block_head->entries = 1;
+
+        curr_idx->file_block = original_file_block;
+        curr_idx->leaf_block = phys_block_no;
+    }
+
+    return ransomfs_allocate_new_block_rec(sb, block_head, logical_block_no, 0, initial_phys_block);
+    
+}
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no) {
 
     struct ransomfs_extent_header head;
@@ -200,7 +316,7 @@ void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first
     memset(&head, 0, sizeof(struct ransomfs_extent_header));
     head.magic = RANSOMFS_EXTENT_MAGIC;
     head.entries = 1;
-    head.max = RANSOMFS_EXTENT_PER_INODE;
+    head.max = RANSOMFS_EXTENT_PER_INODE-1;
     head.depth = 0;
        
     //the only leaf

@@ -24,11 +24,15 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
         if (!create)
             return 0;
 
-        return ransomfs_allocate_new_block(sb, ci->extent_tree, iblock);
+        phys_block_no = ransomfs_allocate_new_block(sb, ci->extent_tree, iblock, 0); //FIXME 0 here may be wrong
+        if (phys_block_no < 0)
+            return phys_block_no;
+
+        //update inode on disk
+        mark_inode_dirty(inode);
 
     }
 
-    printk(KERN_INFO "Block %lld allocated, mapping with %d in progess... %ld\n", iblock, phys_block_no, sb->s_blocksize);
     //block already allocated, map it
     map_bh(bh_result, sb, phys_block_no);
 
@@ -55,8 +59,8 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     
     printk(KERN_INFO "Write begin called\n");
 
-    if (pos + len > RANSOMFS_MAX_FILESIZE)
-        return -ENOSPC;
+    //if (pos + len > RANSOMFS_MAX_FILESIZE)
+    //    return -ENOSPC;
     
     //check we have enough block left on the disk
     new_blocks_needed = ((pos + len) / RANSOMFS_BLOCK_SIZE) + 1;
@@ -71,17 +75,12 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
 
     printk(KERN_INFO "Checks passed %llu - %d\n", pos, len);
 
-    printk(KERN_INFO "params %p, %p, %llu, %d, %d, %p, %p\n", file, mapping, pos, len, flags, pagep, fsdata);
-
-    printk(KERN_INFO "page %p\n", *pagep);
     //allocate the blocks needed
     err = block_write_begin(mapping, pos, len, flags, pagep, ransomfs_file_get_block);
     if (err < 0)
         //TODO blocks deallocation
         printk(KERN_ERR"Something went wrong - blocks need to be deallocated\n");
     
-
-    printk(KERN_INFO "page %p\n", *pagep);
     printk(KERN_INFO "Begin complete\n");
 
     return err;
@@ -96,7 +95,6 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     int ret;
 
     printk(KERN_INFO "Write end called\n");
-    printk(KERN_INFO "params %p, %p, %llu, %d, %d, %p, %p\n", file, mapping, pos, len, copied, page, fsdata);
     //do the common filesystem stuff
     ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
     if (ret < len) {
@@ -150,7 +148,7 @@ const struct file_operations ransomfs_file_ops = {
     .llseek = generic_file_llseek,
     .owner = THIS_MODULE,
     .read_iter = generic_file_read_iter,
-    //.open = ransomfs_file_open,
+    .open = ransomfs_file_open,
     .write_iter = generic_file_write_iter,
     .fsync = generic_file_fsync,
     .mmap = generic_file_mmap,

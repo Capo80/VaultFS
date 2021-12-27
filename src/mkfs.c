@@ -22,19 +22,19 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
     if (!sb)
         return NULL;
 
-    uint64_t blocks_count = fstats->st_size / RANSOMFS_BLOCK_SIZE;
-    uint64_t inodes_count = blocks_count; //TODO this is wrong
-    uint64_t mod = inodes_count % RANSOMFS_INODES_PER_BLOCK;
+    uint32_t blocks_count = fstats->st_size / RANSOMFS_BLOCK_SIZE;
+    uint32_t inodes_count = blocks_count; //TODO this is wrong
+    uint32_t mod = inodes_count % RANSOMFS_INODES_PER_BLOCK;
     if (mod)
         inodes_count += RANSOMFS_INODES_PER_BLOCK - mod;
 
     memset(sb, 0, sizeof(struct superblock));
     sb->info = (struct ransomfs_sb_info) {
         .magic = htole32(RANSOMFS_MAGIC),
-        .blocks_count = htole64(blocks_count),
-        .inodes_count = htole64(inodes_count),
-        .free_inodes_count = htole64(inodes_count - 1),
-        .free_blocks_count = htole64(blocks_count - 1), //TODO this is wrong
+        .blocks_count = htole32(blocks_count),
+        .inodes_count = htole32(inodes_count),
+        .free_inodes_count = htole32(inodes_count - 1),
+        .free_blocks_count = htole32(blocks_count - 1), //TODO this is wrong
     };
 
     printf(
@@ -75,7 +75,7 @@ int write_root_inode(int fd) {
     memset(&root_extent, 0, sizeof(struct ransomfs_extent_header));
     root_extent.magic = RANSOMFS_EXTENT_MAGIC;
     root_extent.entries = htole16(1);
-    root_extent.max = RANSOMFS_EXTENT_PER_INODE;
+    root_extent.max = RANSOMFS_EXTENT_PER_INODE-1;
     root_extent.depth = 0;
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
@@ -195,25 +195,25 @@ int main(int argc, char **argv) {
     }
 
     //Writing group 0 table - one block/inode occupied by root
-    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-1, RANSOMFS_INODES_PER_BLOCK-1)) {
+    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-1, RANSOMFS_INODES_PER_GROUP-1)) {
 		perror("group 0 desc table:");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
 
-    //write other table
-    uint64_t blocks_count = stat_buf.st_size / RANSOMFS_BLOCK_SIZE;
-    uint64_t block_desc_count = (blocks_count / RANSOMFS_BLOCKS_PER_GROUP + 1) / ( RANSOMFS_BLOCK_SIZE / sizeof(struct ransomfs_group_desc)) + 1;
-    for (int i = 0; i < block_desc_count-1; i++) {
-        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP, RANSOMFS_INODES_PER_BLOCK)) {
+    //write other tables
+    uint32_t blocks_count = stat_buf.st_size / RANSOMFS_BLOCK_SIZE;
+    uint32_t block_desc_count = blocks_count / RANSOMFS_BLOCKS_PER_GROUP;
+    for (int i = 0; i < block_desc_count; i++) {
+        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP, RANSOMFS_INODES_PER_GROUP)) {
             perror("groups desc table:");
             ret =  EXIT_FAILURE;
             goto free_sb;
-        }       
+        }  
     }
 
     //padding until the end of the block
-    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE - block_desc_count*sizeof(struct ransomfs_group_desc))) {
+    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE - (block_desc_count+1)*sizeof(struct ransomfs_group_desc))) {
     	perror("group desc write_padding():");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
@@ -221,9 +221,7 @@ int main(int argc, char **argv) {
 
     printf("Written descriptor table block\n");
 
-    //TODO Everything down here shold be done for every group, not only once
-    //     It is fine like this until disk size > 128Gb
-
+    //write group 0. it is different beacuse the root inode is alredy in there
 	if (!write_first_bit_bitmap(fd)) {
 		perror("bitmaps write_padding():");
     	ret =  EXIT_FAILURE;
@@ -236,7 +234,7 @@ int main(int argc, char **argv) {
 		goto free_sb;
 	}
 
-    printf("Written bitmaps\n");
+    printf("Written group 0 bitmaps\n");
 
     //Write root inode
 	if (!write_root_inode(fd)) {
@@ -246,13 +244,6 @@ int main(int argc, char **argv) {
 	}
 
     printf("Written root inode\n");
-
-    //Padding until the end of inode table
-    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE*RANSOMFS_INODES_GROUP_BLOCK_COUNT - sizeof(struct ransomfs_inode))) {
-		perror("inode table write_padding():");
-    	ret =  EXIT_FAILURE;
-		goto free_sb;
-	}
 
     printf("Filesystem correctly formatted\n");
 

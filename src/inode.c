@@ -13,7 +13,7 @@ DEFINE_MUTEX(inode_bitmap_mutex);
 
 // recursive function that reads the extent tree and finds an inode number
 // TODO every fucntion that reads the exent tree is the same, is there a better way to do this?
-// returns the inode number if found,  anegative number if not
+// returns the inode number if found,  a negative number if not
 static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_header *block_head, const char* to_search) {
 
     int i = 0, j = 0, off = 0;
@@ -44,6 +44,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                 if (!bh)
                     return -EIO;
 
+                off = 0;
                 curr_record = (struct ransomfs_dir_record*) bh->b_data;
 
                 //iterate over records of single block
@@ -65,11 +66,37 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
     } else {
         //tree has depth zero call this function again at lower levels
         struct ransomfs_extent_idx* curr_node;
+        struct ransomfs_extent_header* new_block_head;
+        unsigned int ret;
+        
         for (i = 0; i < block_head->entries; i++) {
-            //int ret = 0;
-            curr_node = ((struct ransomfs_extent_idx*) block_head) + i + 1;
-            //TODO compelete this
+
+            printk("Entering entry %d", i);
+            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+
+            bh = sb_bread(sb, curr_node->leaf_block);
+            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+
+            //check magic
+            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                printk(KERN_ERR "FATAL ERROR: Currupted exent tree\n");
+                return -ENOTRECOVERABLE;
+            }
+
+            //call again woth new block head
+            ret = find_inode_by_name(sb, new_block_head, to_search);
+
+            if (ret > 0) { 
+                //operation was successful, we can stop here   
+                brelse(bh);
+                return ret;
+            }
+
+            //operation failed try again with next node
+            brelse(bh);
         }
+
+        //failed return -1
 
     }
 
@@ -88,6 +115,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     uint32_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
     uint32_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
     uint32_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
+    uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
     int ret;
 
     printk(KERN_INFO "Inode block is at (%d, %d)", inode_block, inode_shift);
@@ -119,7 +147,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     	return ERR_PTR(ret);
     }
     cinode = (struct ransomfs_inode *) bh->b_data;
-    cinode += inode_shift;
+    cinode += inode_block_shift;
 
     inode->i_ino = ino;
     inode->i_sb = sb;
@@ -197,6 +225,92 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
 	return NULL;
 }
 
+//Allocates block_count new blocks in the closest group to close_block_idx
+// return group and block idx with error == 0 on success, on failure the group idx will contain the error code and error will be 1
+block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_block_idx, uint32_t block_count) {
+
+    struct buffer_head* bh;
+    uint32_t c, distance = RANSOMFS_GROUPDESC_PER_BLOCK+1;
+    uint32_t close_group_idx = close_block_idx / RANSOMFS_BLOCKS_PER_GROUP;
+    block_pos_t new_block_pos;
+    unsigned long* data_bitmap;
+
+    printk(KERN_INFO "get free blocks called\n");
+
+    //read gdt if necessary
+    if (gdt == NULL) {
+        bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
+        if (!bh){
+            new_block_pos.group_idx = -EIO;
+            new_block_pos.error = 1;
+            return new_block_pos;
+        }
+
+        gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
+        memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
+    }
+
+    printk(KERN_INFO "gdt is ready\n");
+
+    //find closest group with free space
+    c = 0;
+    while (c < RANSOMFS_GROUPDESC_PER_BLOCK) {  //can be done faster but gdt is very small so not needed i think
+        if (gdt[c].free_blocks_count >= block_count && abs(close_group_idx - c) < distance) {
+            distance = abs(close_group_idx - c);
+            new_block_pos.group_idx = c;                      
+        }
+        c++;
+    }
+
+    //no space left
+    if (distance == RANSOMFS_GROUPDESC_PER_BLOCK+1) {
+        new_block_pos.group_idx = -ENOSPC;
+        new_block_pos.error = 1;
+        return new_block_pos;
+    }
+
+    printk(KERN_INFO "Found space for new file at group %u\n", new_block_pos.group_idx);
+
+    //update GDT in memory
+    gdt[new_block_pos.group_idx].free_blocks_count--;                //FIXME need concurrency checks here (just a __sync with a check on 0)
+    gdt[new_block_pos.group_idx].free_inodes_count--;
+
+    //load data bitmap from disk
+    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
+    data_bitmap = (unsigned long*) bh->b_data;
+    mutex_lock_interruptible(&data_bitmap_mutex);
+
+    printk("bitmap: %lx", *data_bitmap);
+
+    new_block_pos.block_idx = bitmap_find_next_zero_area(data_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, block_count, 0);
+
+    if (new_block_pos.block_idx >= RANSOMFS_BLOCK_SIZE*8) {
+        printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
+        gdt[new_block_pos.group_idx].free_blocks_count++;
+        new_block_pos.group_idx = -ENOTRECOVERABLE;
+        new_block_pos.error = 1;
+        return new_block_pos;
+    }
+
+    printk(KERN_INFO "Found %d free blocks at index %u\n", block_count, new_block_pos.block_idx);
+
+    //update datablock bitmap
+    bitmap_set(data_bitmap, new_block_pos.block_idx, 1);
+    mark_buffer_dirty(bh);
+    brelse(bh);
+    
+    mutex_unlock(&data_bitmap_mutex);
+
+    //update GDT on disk
+    bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
+    memcpy(bh->b_data, gdt, RANSOMFS_BLOCK_SIZE); //TODO we don't need to do this every time, just every now and then
+    mark_buffer_dirty(bh);                        //     to prevent data loss in case of failures
+    brelse(bh);
+    
+    return new_block_pos;
+
+}
+
 static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
     struct super_block* sb = dir->i_sb;
@@ -207,9 +321,10 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     unsigned short curr_space;
     uint32_t ino;
     int ret = 0;
-    uint32_t group_idx, distance = RANSOMFS_GROUPDESC_PER_BLOCK+1, c;
+    uint32_t group_idx;
     uint32_t parent_group_idx = dir->i_ino / RANSOMFS_INODES_PER_GROUP;
-    uint32_t data_block_idx = 0, inode_table_idx = 0;
+    uint32_t phys_block_idx = 0, inode_table_idx = 0;
+    block_pos_t new_block_pos;
     
     printk(KERN_INFO "Create called\n");
     
@@ -223,73 +338,27 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         return -EINVAL;
     }
 
-    //read gdt if necessary
-    if (gdt == NULL) {
-        bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
-        if (!bh)
-            return -EIO;
-
-        gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
-        memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
-    }
-
-    //find closest group with free space
-    c = 0;
-    while (c < RANSOMFS_GROUPDESC_PER_BLOCK) {  //can be done faster but gdt is very small so not needed i think
-        if (gdt[c].free_blocks_count != 0 && parent_group_idx - c < distance) {
-            distance = parent_group_idx - c;
-            group_idx = c;                      
-        }
-        c++;
-    }
-
-    printk(KERN_INFO "Found space for new file at group %u\n", group_idx);
-    
-    //no space left
-    if (distance == RANSOMFS_GROUPDESC_PER_BLOCK+1)
-        return -ENOSPC;
-
-    //update GDT in memory
-    gdt[c].free_blocks_count--;                //FIXME need concurrency checks here (just a __sync with a check on 0)
-    gdt[c].free_inodes_count--;
-
-    //update GDT on disk
-    bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
-    memcpy(bh->b_data, gdt, RANSOMFS_BLOCK_SIZE); //TODO we don't need to do this every time, just every now and then
-    mark_buffer_dirty(bh);                        //     to prevent data loss in case of failures
-    brelse(bh);
-
     /*
         Find free data blocks within group
         - Look for RANSOMFS_INITIAL_FILE_SPACE contiguos blocks
-        - if we fail lower the number of block until we reach 1
-        - we will always find at least one block beacuse the GDT has already been updated
+        - if we fail lower the number of block until we reach 0
+        - if we reach 0 we have no space left
     */
-    //load data bitmap from disk
-    bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP);
-    data_bitmap = (unsigned long*) bh->b_data;
-    mutex_lock_interruptible(&data_bitmap_mutex);
-
-    printk("bitmap: %lx", *data_bitmap);
-
     curr_space = RANSOMFS_INITIAL_FILE_SPACE;
-    while ( curr_space > 0  && (data_block_idx = bitmap_find_next_zero_area(data_bitmap, RANSOMFS_BLOCK_SIZE, 0, curr_space, 0)) >= RANSOMFS_BLOCK_SIZE)
+    while (curr_space > 0) {
+        new_block_pos = ransomfs_get_free_blocks(sb, parent_group_idx, curr_space);
+        if (new_block_pos.error == 0)
+            break;
         curr_space--;
-
-    printk(KERN_INFO "Found %d free blocks at index %u\n", curr_space, data_block_idx);
-
-    if (curr_space == 0) {
-        printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
-        ret = -ENOSPC;
-        goto correct_gdt;
     }
 
-    //update datablock bitmap
-    bitmap_set(data_bitmap, data_block_idx, 1);
-    mark_buffer_dirty(bh);
-    brelse(bh);
+    if (curr_space == 0) {
+        ret = new_block_pos.group_idx;
+        goto success;
+    }
     
-    mutex_unlock(&data_bitmap_mutex);
+    //get actual phys block number
+    phys_block_idx = new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + RANSOMFS_INODES_GROUP_BLOCK_COUNT + 4 + new_block_pos.block_idx;
 
     //find free space for inode in table
     //we have a lot more space than needed for inodes, so if we found a data block we will always find space for an inode
@@ -297,7 +366,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&inode_bitmap_mutex);
 
-    inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, RANSOMFS_BLOCK_SIZE, 0, 1, 0);
+    inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, 1, 0);
 
     printk(KERN_INFO "Found space for inode at index %u\n", inode_table_idx);
 
@@ -323,7 +392,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //initialize the inode
     inode_init_owner(inode, dir, mode);
     new_info = RANSOMFS_INODE(inode);
-    ransomfs_init_extent_tree(new_info, group_idx*RANSOMFS_BLOCKS_PER_GROUP + 4 + 512 + data_block_idx);
+    ransomfs_init_extent_tree(new_info, phys_block_idx);
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
     inode->i_blocks = 1;
     inode->i_ino = ino;
@@ -356,13 +425,26 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     }
 
 correct_bitmaps:
-    //we failed correct the bitmaps
+    //we failed correct the bitmaps    
+    bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
+    inode_bitmap = (unsigned long*) bh->b_data;
+    mutex_lock_interruptible(&inode_bitmap_mutex);
     bitmap_clear(inode_bitmap, inode_table_idx, 1);
-    bitmap_clear(data_bitmap, data_block_idx, 1);
-correct_gdt:
+    mark_buffer_dirty(bh);
+    brelse(bh);
+    mutex_unlock(&inode_bitmap_mutex);
+    
+    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
+    data_bitmap = (unsigned long*) bh->b_data;
+    mutex_lock_interruptible(&data_bitmap_mutex);
+    bitmap_clear(data_bitmap, new_block_pos.block_idx, 1);
+    mark_buffer_dirty(bh);
+    brelse(bh);
+    mutex_unlock(&data_bitmap_mutex);
+
     //we failed correct the gdt
-    gdt[c].free_blocks_count++;                //FIXME need concurrency checks here
-    gdt[c].free_inodes_count++;
+    gdt[new_block_pos.group_idx].free_blocks_count++;                //FIXME need concurrency checks here
+    gdt[new_block_pos.group_idx].free_inodes_count++;
 success:
     return ret;
 }
