@@ -54,10 +54,15 @@ static int ransomfs_write_inode(struct inode *inode,
     uint32_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
     uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
 
+    AUDIT(TRACE)
     printk("Write inode called\n");
+    AUDIT(TRACE)
     printk("\tino: %u\n", ino);
+    AUDIT(TRACE)
     printk("\tblock: %u\n", inode_block);
+    AUDIT(TRACE)
     printk("\tshift: %u\n", inode_shift);
+    AUDIT(TRACE)
     printk("\tshift: %u\n", inode_block_shift);
     
     if (ino >= sbi->inodes_count)
@@ -67,7 +72,6 @@ static int ransomfs_write_inode(struct inode *inode,
     if (!bh)
         return -EIO;
 
-    printk("size: %ld\n", sizeof(struct ransomfs_inode));
     disk_inode = (struct ransomfs_inode *) bh->b_data;
     disk_inode += inode_block_shift;
 
@@ -175,7 +179,8 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
 
     // Check magic number
     if (dsb->magic != sb->s_magic) {
-        pr_err("Wrong magic number\n");
+        AUDIT(ERROR)
+        printk(KERN_ERR"Wrong magic number\n");
         ret = -EINVAL;
         goto release;
     }
@@ -192,6 +197,11 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     rbi->free_inodes_count = dsb->free_inodes_count;
 	rbi->free_blocks_count = dsb->free_blocks_count;
 	rbi->mtime = ktime_get_real_ns();
+
+    //pass password up 
+    memcpy(data, dsb->passwd_hash, RANSOMFS_PASSWORD_SIZE);
+    AUDIT(DEBUG)
+    printk("fill super: %s", (char*) data);
 
     sb->s_fs_info = rbi;
 

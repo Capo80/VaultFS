@@ -1,6 +1,12 @@
 #ifndef RANSOMFS_H
 #define RANSOMFS_H
 
+//some debug print helpers
+#define DEBUG 1
+#define TRACE 1
+#define ERROR 1
+#define AUDIT(level) 	if(level)
+
 #define RANSOMFS_MAGIC 							0x42424242
 #define RANSOMFS_EXTENT_MAGIC					0x1727
 #define RANSOMFS_SB_BLOCK_NR 					0
@@ -16,6 +22,7 @@
 #define RANSOMFS_INODES_PER_BLOCK 				32
 #define RANSOMFS_EXTENT_PER_INODE				10
 #define RANSOMFS_EXTENT_PER_BLOCK				408
+#define RANSOMFS_PASSWORD_SIZE					128
 
 #define RANSOMFS_MAX_FILENAME					255
 #define RANSOMFS_MAX_FOLDER_FILES				65536
@@ -92,6 +99,8 @@ struct ransomfs_sb_info {
 	uint32_t free_blocks_count;
 
 	uint64_t mtime; //mount time - seconds since epoch
+
+	unsigned char passwd_hash[RANSOMFS_PASSWORD_SIZE];
 
 };
 

@@ -15,11 +15,13 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
 
     //TODO what is the max file size?
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Mapping requested\n");
 
     phys_block_no = ransomfs_exent_search_block(ci->extent_tree, iblock);
     if (phys_block_no == 0) {
         //block not allocated
+        AUDIT(TRACE)
         printk(KERN_INFO "Block %lld not allocated\n", iblock);
         if (!create)
             return 0;
@@ -36,6 +38,7 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     //block already allocated, map it
     map_bh(bh_result, sb, phys_block_no);
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Mapping complete\n");
     return 0;
 
@@ -57,7 +60,8 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     uint32_t new_blocks_needed = 0;
     int err;
     
-    printk(KERN_INFO "Write begin called\n");
+    AUDIT(TRACE)
+    printk(KERN_INFO "Write begin called %d\n", current->pid);
 
     //if (pos + len > RANSOMFS_MAX_FILESIZE)
     //    return -ENOSPC;
@@ -73,14 +77,18 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
         return -ENOSPC;
     
 
+    AUDIT(DEBUG)
     printk(KERN_INFO "Checks passed %llu - %d\n", pos, len);
 
     //allocate the blocks needed
     err = block_write_begin(mapping, pos, len, flags, pagep, ransomfs_file_get_block);
-    if (err < 0)
+    if (err < 0) {
         //TODO blocks deallocation
+        AUDIT(TRACE)
         printk(KERN_ERR"Something went wrong - blocks need to be deallocated\n");
+    }
     
+    AUDIT(TRACE)
     printk(KERN_INFO "Begin complete\n");
 
     return err;
@@ -94,14 +102,18 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     uint32_t nr_blocks_before;
     int ret;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Write end called\n");
+    
     //do the common filesystem stuff
     ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
     if (ret < len) {
+        AUDIT(TRACE)
         printk(KERN_ERR "Could not write all the requested bytes");
         return ret;
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "checking if truncation is needed");
     
     nr_blocks_before = inode->i_blocks;
@@ -112,9 +124,11 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     mark_inode_dirty(inode);
 
     if (nr_blocks_before > inode->i_blocks) {
+        AUDIT(TRACE)
         printk(KERN_INFO "File is smaller - some blocks need to be freed");
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Write end complete\n");
 
     return ret;
@@ -122,6 +136,7 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
 
 static int ransomfs_file_open(struct inode *inode, struct file *filp) {
 
+    AUDIT(TRACE)
     printk(KERN_INFO "open called\n");
 
     //TODO here we implement write protection

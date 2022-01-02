@@ -56,6 +56,7 @@ uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_exten
 
         //check magic
         if (block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+            AUDIT(ERROR)
             printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
             brelse(bh);
             return -ENOTRECOVERABLE;
@@ -79,6 +80,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     struct buffer_head *bh = NULL;
     uint32_t new_block_no, last_logic_no;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Started the read of the extent tree for add file\n");
 
     //tree has depth zero, other records point to data blocks, read them directly
@@ -86,14 +88,16 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
         struct ransomfs_extent* curr_leaf;
 
+        AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
             curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
-            
+
+            AUDIT(TRACE)    
             printk(KERN_INFO "Reading entry %d\n", i);
-            printk(KERN_INFO"%ld %ld %ld\n", sizeof(struct ransomfs_extent), sizeof(struct ransomfs_extent_header), sizeof(struct ransomfs_extent_idx));
+            AUDIT(TRACE)
             printk(KERN_INFO "Start data block: %x - len: %d\n", curr_leaf->data_block, curr_leaf->len);
                 
             //iterate over data block of single extent
@@ -101,6 +105,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
                 
                 ret = add_file_to_dir_record(sb, j, filename, ino, file_type);
                 if (ret > 0) {
+                    AUDIT(TRACE)
                     printk(KERN_INFO "Added %s in %x\n", filename, j);
                     return 0;
                 }
@@ -115,7 +120,8 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
         int ret;
         
         for (i = 0; i < block_head->entries; i++) {
-
+            
+            AUDIT(TRACE)
             printk("Entering entry %d", i);
             curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
 
@@ -124,6 +130,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
             //check magic
             if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
                 return -ENOTRECOVERABLE;
             }
@@ -143,19 +150,26 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Extent full for directory - expanding\n");
     //failed - we no more space in this extent - allocate a new block and add the file there
     //find the new logical block number
     last_logic_no = get_last_logical_block_no(sb, block_head);
+    
+    AUDIT(DEBUG)
     printk(KERN_INFO "Last logical block is %d\n", last_logic_no);
+    
     if (last_logic_no < 0) {
         return -ENOTRECOVERABLE;
     }
     new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, 0);
 
+    AUDIT(DEBUG)
     printk(KERN_INFO "new physical block is %d\n", new_block_no);
+    
     ret = add_file_to_dir_record(sb, new_block_no, filename, ino, file_type);
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Extent tree updated\n");
     //TODO ugly?
     if (ret < 0)
@@ -178,25 +192,23 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
     struct ransomfs_extent* curr_leaf;
     struct ransomfs_dir_record* curr_record;
     
+    AUDIT(TRACE)
     printk(KERN_INFO "Started the read of the extent tree\n");
 
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
 
+        AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
 
-            //printk(KERN_INFO "Reading entry %d %p %p %p %u\n", i, block_head, curr_leaf, &block_head[1], block_head[1].max);
-            
             curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
             
+            AUDIT(TRACE)
             printk(KERN_INFO "Reading entry %d\n", i);
-            
-            //for (ii = 0; ii < 40; ii++) {
-            //    printk(KERN_INFO "%x\n", ((short*)block_head)[ii]);
-            //}
+            AUDIT(TRACE)
             printk(KERN_INFO "Start data block: %x - len: %u\n", curr_leaf->data_block, curr_leaf->len);
 
             //iterate over data block of single extent
@@ -211,7 +223,8 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
                     if (curr_record->ino != 0) {
-                        printk(KERN_INFO "found %s\n", curr_record->filename);
+                        AUDIT(DEBUG)
+                        printk(KERN_INFO "Found %s\n", curr_record->filename);
                         if (file_counter >= ctx->pos-2) {
                             if (!dir_emit(ctx, curr_record->filename, RANSOMFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
                                 brelse(bh);
@@ -236,6 +249,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
         struct ransomfs_extent_header* new_block_head;
         for (i = 0; i < block_head->entries; i++) {
 
+            AUDIT(TRACE)
             printk("Entering entry %d", i);
             curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
 
@@ -244,6 +258,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
 
             //check magic
             if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
                 return -ENOTRECOVERABLE;
             }
@@ -269,6 +284,7 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
     struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
     struct super_block *sb = inode->i_sb;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "iterate called, pos: %lld\n", ctx->pos) ;
     
     // Check that dir is a directory

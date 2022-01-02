@@ -19,6 +19,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
     int i = 0, j = 0, off = 0;
     struct buffer_head *bh = NULL;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Started the search for an inode\n");
     
     //tree has depth zero, other records point to data blocks, read them directly
@@ -27,14 +28,17 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
         struct ransomfs_extent* curr_leaf;
         struct ransomfs_dir_record* curr_record;
 
+        AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
             curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
             
+            AUDIT(TRACE)
             printk(KERN_INFO "Reading entry %d\n", i);
 
+            AUDIT(TRACE)
             printk(KERN_INFO "Start data block: %d - len: %d\n", curr_leaf->data_block, curr_leaf->len);
                 
             //iterate over data block of single extent
@@ -49,7 +53,8 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
 
                 //iterate over records of single block
                 while (off < RANSOMFS_BLOCK_SIZE) {
-                    //printk(KERN_INFO "Searching off %d ino %d", off, curr_record->ino);
+                    AUDIT(TRACE)
+                    printk(KERN_INFO "Searching off %d ino %d", off, curr_record->ino);
                     if (curr_record->ino != 0)
                         if (strcmp(to_search, curr_record->filename) == 0) {
                             brelse(bh);
@@ -71,6 +76,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
         
         for (i = 0; i < block_head->entries; i++) {
 
+            AUDIT(TRACE)
             printk("Entering entry %d", i);
             curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
 
@@ -79,6 +85,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
 
             //check magic
             if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Currupted exent tree\n");
                 return -ENOTRECOVERABLE;
             }
@@ -118,6 +125,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
     int ret;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Inode block is at (%d, %d)", inode_block, inode_shift);
 
     // TODO check bitmap somewhere here? maybe?
@@ -135,6 +143,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     if (!(inode->i_state & I_NEW))
         return inode;
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Reding inode from disk\n");
 
     ci = RANSOMFS_INODE(inode); //not sure about this for now
@@ -165,6 +174,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     inode->i_mtime.tv_nsec = 0;
     inode->i_blocks = le32_to_cpu(cinode->i_blocks);
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Saved disk info on inode\n");
 
     //copy extent tree
@@ -202,7 +212,8 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
     struct inode* inode = NULL;
     int ino;
 
-    printk(KERN_INFO "look up called\n");
+    AUDIT(TRACE)
+    printk(KERN_INFO "Look up called\n");
 
     //check filename size
     if (child_dentry->d_name.len > RANSOMFS_MAX_FILENAME)
@@ -211,10 +222,12 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
     //search for inode in directory
     ino = find_inode_by_name(sb, ci->extent_tree, child_dentry->d_name.name);
     if (ino >= 0) {
+        AUDIT(TRACE)
         printk(KERN_INFO "inode for %s found, it is number %d\n", child_dentry->d_name.name, ino);
         //read the new inode from disk
         inode = ransomfs_iget(sb, ino);
     } else
+        AUDIT(TRACE)
         printk(KERN_INFO "inode for %s not found\n", child_dentry->d_name.name);
 
     //update dentry
@@ -235,7 +248,8 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     block_pos_t new_block_pos;
     unsigned long* data_bitmap;
 
-    printk(KERN_INFO "get free blocks called\n");
+    AUDIT(TRACE)
+    printk(KERN_INFO "Get free blocks called\n");
 
     //read gdt if necessary
     if (gdt == NULL) {
@@ -249,8 +263,6 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
         gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
         memcpy(gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
     }
-
-    printk(KERN_INFO "gdt is ready\n");
 
     //find closest group with free space
     c = 0;
@@ -269,6 +281,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
         return new_block_pos;
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Found space for new file at group %u\n", new_block_pos.group_idx);
 
     //update GDT in memory
@@ -280,11 +293,13 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&data_bitmap_mutex);
 
+    AUDIT(DEBUG)
     printk("bitmap: %lx", *data_bitmap);
 
     new_block_pos.block_idx = bitmap_find_next_zero_area(data_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, block_count, 0);
 
     if (new_block_pos.block_idx >= RANSOMFS_BLOCK_SIZE*8) {
+        AUDIT(DEBUG)
         printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
         gdt[new_block_pos.group_idx].free_blocks_count++;
         new_block_pos.group_idx = -ENOTRECOVERABLE;
@@ -292,6 +307,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
         return new_block_pos;
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Found %d free blocks at index %u\n", block_count, new_block_pos.block_idx);
 
     //update datablock bitmap
@@ -326,6 +342,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     uint32_t phys_block_idx = 0, inode_table_idx = 0;
     block_pos_t new_block_pos;
     
+    AUDIT(TRACE)
     printk(KERN_INFO "Create called\n");
     
     // Check filename length
@@ -334,6 +351,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     //check mode
     if (!S_ISDIR(mode) && !S_ISREG(mode)) {
+        AUDIT(ERROR)
         printk(KERN_ERR "File type not supported");
         return -EINVAL;
     }
@@ -368,6 +386,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, 1, 0);
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Found space for inode at index %u\n", inode_table_idx);
 
     //update inode bitmap
@@ -387,6 +406,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         goto correct_bitmaps;
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Got new inode with index %u\n", ino);
 
     //initialize the inode
@@ -397,12 +417,14 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     inode->i_blocks = 1;
     inode->i_ino = ino;
     if (S_ISDIR(mode)) {
+        AUDIT(TRACE)
         printk("Creating a directory\n");
         inode->i_size = RANSOMFS_BLOCK_SIZE;
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
         set_nlink(inode, 2); // . and ..
     } else if (S_ISREG(mode)) {
+        AUDIT(TRACE)
         printk("Creating a regular file\n");
         inode->i_size = 0;
         inode->i_op = &ransomdfs_file_inode_ops;
@@ -411,6 +433,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         set_nlink(inode, 1);
     }
 
+    AUDIT(TRACE)
     printk(KERN_INFO "Inode inizialized\n");
     
     //add to directory
@@ -420,6 +443,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);
         d_instantiate(dentry, inode);
+        AUDIT(TRACE)
         printk(KERN_INFO "Inode added to directory - Creation SUCCESS\n");
         goto success;
     }
