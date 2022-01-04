@@ -24,7 +24,7 @@ The major differences with the ext4 FileSystem are:
 - No Reserved GDT blocks, ext4 allocates blocks that can be used to resize the FileSystem if needed, this FileSystem will not have this feature;
 - Linear addressing for directories, directory will be treated as linear arrays, not as hash trees;
 - No group 0 padding, the ext4 FileSystem leaves 1024 bytes padding at the start of the for boot sectors and other operating system oddities, this FileSytem is not maent to house an OS so this is not needed;
-- No journaling, defitely something that should be implemented, but i believe it is out of the scope of the project for now.
+- No journaling, definitely something that should be implemented, but i believe it is out of the scope of the project for now.
 - Fixed block size of 4Kb;
 - No 32-bit mode for addressing;
 
@@ -57,9 +57,9 @@ No tests have been implemented so far.
 | :heavy_check_mark: | File/Directory Creation | |
 | :heavy_check_mark: | File Write | |
 | :heavy_check_mark: | File Read | |
-| :x: | Write Protection | |
-| :gear: | Umount Protection | |
-| :x: | Block Device Protection | |
+| :gear: | Write Protection | |
+| :heavy_check_mark: | Umount Protection | |
+| :heavy_check_mark: | Block Device Protection | |
 
 ## TODOs
 

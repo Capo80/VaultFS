@@ -2,6 +2,11 @@
 
 // ##################### umount protection ###############################
 
+static void sucurity_info_reclaim_callback(struct rcu_head *rcu) {
+	struct ransomfs_security_info *info = container_of(rcu, struct ransomfs_security_info, rcu);
+	kfree(info);
+}
+
 //mounted on security_sb_umount entry
 int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
@@ -23,10 +28,21 @@ int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 	rcu_read_lock();
 	list_for_each_entry(info, &security_info_list, node) {
 		AUDIT(DEBUG)
-		printk(KERN_INFO "checking: %s\n", info->mount_path);		
-		if (info->umount_lock && strcmp(info->mount_path, path) == 0) {
-			//it is protected - fail
-			res->pass = 0;
+		printk(KERN_INFO "checking: %s\n", info->mount_path);	
+		if (strcmp(info->mount_path, path) == 0) {	
+			//is is protected - is the lock active?
+			if (info->umount_lock) {
+				AUDIT(TRACE)
+				printk(KERN_INFO "Blocked umount on protected path\n");
+				//it is active - fail
+				res->pass = 0;
+			} else {
+				//it is not - clean up the list - pass
+				spin_lock(&info_list_spinlock); // kprobe is unpreemptable
+				list_del_rcu(&info->node);
+				spin_unlock(&info_list_spinlock);
+				call_rcu(&info->rcu, sucurity_info_reclaim_callback);
+			}
 			break;
 		}
 	}
@@ -55,27 +71,38 @@ int lock_bdev = 0;
 int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
+	struct ransomfs_security_info* info;
+	struct block_device* bdev;
     struct file* file = (struct file*) regs_get_kernel_argument(regs, 0);
 
     char* buffer = kzalloc(4096, GFP_KERNEL);
     char* path;
     path = d_path(&file->f_path, buffer, 4096);
 
+	//pass by deafult
 	res->pass = 1;
-    if (strstr(path, "loop0")) {	
-		struct block_device* bdev = lookup_bdev(path);
-		if (IS_ERR(bdev)) {
-			//AUDIT(TRACE)
-			//printk(KERN_INFO "[%d] open called: %s\n", current->pid, path);
-		} else {
-			//AUDIT(TRACE)
-			//printk(KERN_INFO "[%d] open called: (%d, %d) %s\n", current->pid, MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev), path);		
-			if (lock_bdev && MAJOR(bdev->bd_dev) == 7 && MINOR(bdev->bd_dev) == 0)	
-				res->pass = 0;
-		}
-	}
+    	
+	bdev = lookup_bdev(path);
 	kfree(buffer);
-
+	if (!IS_ERR(bdev)) {
+		AUDIT(TRACE)
+		printk(KERN_INFO "Detected device opening: (%d, %d)\n", MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));		
+		
+		//check if device is protected
+		rcu_read_lock();
+		list_for_each_entry(info, &security_info_list, node) {
+			AUDIT(DEBUG)
+			printk(KERN_INFO "checking: %s (%d, %d)\n", info->mount_path, MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));		
+			if (info->bdev_lock && info->bdev_id == bdev->bd_dev) {
+				AUDIT(TRACE)
+				printk(KERN_INFO "Denied access on protected block_device\n");
+				//it is protected - fail
+				res->pass = 0;
+				break;
+			}
+		}
+		rcu_read_unlock();
+	}
 	return 0;
 }
 NOKPROBE_SYMBOL(open_entry_handler);

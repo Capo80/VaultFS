@@ -24,6 +24,7 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     struct block_device* bdev;
     struct mount_sb_info* cur;
     struct ransomfs_security_info* new_node;
+    unsigned long irq_flags;
     unsigned bkt;
 
     //TODO make passwd a parameter at mount?
@@ -70,11 +71,11 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
 
     //protections are active by default
     new_node->bdev_lock = 1;
-    new_node->umount_lock = 0;
+    new_node->umount_lock = 1;
 
-    spin_lock(&info_list_spinlock);
+    spin_lock_irqsave(&info_list_spinlock, irq_flags);
 	list_add_rcu(&new_node->node, &security_info_list);
-    spin_unlock(&info_list_spinlock);
+    spin_unlock_irqrestore(&info_list_spinlock, irq_flags);
 
     return dentry;
 }

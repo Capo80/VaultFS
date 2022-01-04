@@ -14,13 +14,21 @@ typedef struct umount_security_info {
 
 #define umount_ctl(info, command) 	        syscall(134, info, command)
 
+//#define __KERNEL__ //FIXME have to do this or my IDE freaks out - remove before compiling
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
 #include <linux/syscalls.h>
+#include <linux/crypto.h>
 #include "lib/vtpmo.h"
 
 #include "../ransomfs.h"
 #include "../ransomfs_security.h"
+
+//sha512 struct
+struct sdesc {
+    struct shash_desc shash;
+    char ctx[];
+};
 
 //helpers
 inline void write_cr0_forced(unsigned long val);

@@ -5,7 +5,7 @@ This Module implements 3 protective measures that, when active, have the followi
 2. Umount protection, the filesystem should be detached only on system shutdown;
 3. Underlaying block device protection, the user should not be able to interact with the underlying block device after the system is mounted;
 
-Protection 2 and 3 can be activated/deactivated with syscalls by using a single unique, secure password (multiple password are also a consideration).
+Protection 2 can be activated/deactivated with syscalls by using a single unique, secure password.
 
 All protections are active by default at Filesystem Mounting. 
 
