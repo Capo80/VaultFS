@@ -43,7 +43,7 @@ To recognize the block device we should be able to use the Major/Minor number (i
 
 Done entirely in the FS code, in the implementation of the "open" operation, we keep additional information in the inode to check if it has already been written and deny the open in WRITE MODE if it is.
 
-We also need an additional syncronized data structure to manage threads that are trying to access the same "avaible" inode to give only one of them the rights to modify it.
+We also need an additional syncronized data structure to manage threads that are trying to access the same "available" inode to give only one of them the rights to modify it.
 
 
 

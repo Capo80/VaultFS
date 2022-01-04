@@ -6,7 +6,7 @@ The security features that i plan to implement are:
 - Umount protection, the filesystem should be detached only on system shutdown;
 - Underlaying block device protection, the user should not be able to interact with the underlying block device after the system is mounted;
 
-Details on the implementation are in the [implementation details file](docs/Implemention details of the protections.md).
+Details on the implementation are in the [implementation details file](docs/Implemention%20details%20of%20the%20protections.md).
 
 ## Disk-Layout
 
