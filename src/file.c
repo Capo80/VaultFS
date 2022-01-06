@@ -73,7 +73,7 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     else
         new_blocks_needed = 0;
 
-    if (new_blocks_needed  > sbi->free_blocks_count)
+    if (new_blocks_needed  > sbi->sb.free_blocks_count)
         return -ENOSPC;
     
 

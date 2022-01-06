@@ -103,6 +103,7 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
     uint32_t phys_block_no = 0, group_idx, last_phys_block_no, nr_new_blocks, temp;
     uint32_t curr_alloc = 0;
     struct buffer_head* bh;
+    struct ransomfs_sb_info* sbi = RANSOMFS_SB(sb);
     struct ransomfs_extent* new_leaf, *last_leaf;
     struct ransomfs_extent_header* new_block_head;
     block_pos_t new_block_pos;
@@ -161,14 +162,14 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
                     if (block_head->entries == block_head->max) {
                         //no more space
                         //deallocate block
-                        gdt[c].free_blocks_count += nr_new_blocks;
+                        sbi->gdt[c].free_blocks_count += nr_new_blocks;
                         bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
                         data_bitmap = (unsigned long*) bh->b_data;
-                        mutex_lock_interruptible(&data_bitmap_mutex);
+                        mutex_lock_interruptible(&sbi->data_bitmap_mutex);
                         bitmap_clear(data_bitmap, new_block_pos.block_idx, nr_new_blocks);
                         mark_buffer_dirty(bh);
                         brelse(bh);
-                        mutex_unlock(&data_bitmap_mutex);
+                        mutex_unlock(&sbi->data_bitmap_mutex);
 
                         return 0;
                     }

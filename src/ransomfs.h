@@ -2,9 +2,10 @@
 #define RANSOMFS_H
 
 //some debug print helpers
-#define DEBUG 1
-#define TRACE 1
-#define ERROR 1
+#define DEBUG 0
+#define TRACE 0
+#define ERROR 0
+#define WORK  1
 #define AUDIT(level) 	if(level)
 
 #define RANSOMFS_MAGIC 							0x42424242
@@ -88,7 +89,8 @@ struct ransomfs_dir_record {
 
 };
 
-struct ransomfs_sb_info {
+//superblock on disk
+struct ransomfs_superblock {
 
 	uint32_t magic;
 
@@ -112,12 +114,26 @@ typedef struct block_pos {
 
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
-static DEFINE_MUTEX(data_bitmap_mutex);
-extern struct ransomfs_group_desc* gdt;
+#include <linux/mutex.h>
 
 struct ransomfs_inode_info {
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
+};
+
+
+//superblock in memory
+struct ransomfs_sb_info {
+
+	struct ransomfs_superblock sb;
+
+	struct ransomfs_group_desc* gdt; //cache the gdt
+
+	//mutex to sync modification
+	struct mutex gdt_mutex;
+	struct mutex inode_bitmap_mutex; //TODO theese 2 should be one per group
+	struct mutex data_bitmap_mutex;
+
 };
 
 /* dir.c */

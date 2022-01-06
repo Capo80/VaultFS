@@ -12,8 +12,8 @@
 #include "ransomfs.h"
 
 struct superblock {
-    struct ransomfs_sb_info info;
-    char padding[RANSOMFS_BLOCK_SIZE - sizeof(struct ransomfs_sb_info)]; /* Padding to match block size */
+    struct ransomfs_superblock info;
+    char padding[RANSOMFS_BLOCK_SIZE - sizeof(struct ransomfs_superblock)]; /* Padding to match block size */
 };
 
 static struct superblock *write_superblock(int fd, struct stat *fstats)
@@ -29,7 +29,7 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
         inodes_count += RANSOMFS_INODES_PER_BLOCK - mod;
 
     memset(sb, 0, sizeof(struct superblock));
-    sb->info = (struct ransomfs_sb_info) {
+    sb->info = (struct ransomfs_superblock) {
         .magic = htole32(RANSOMFS_MAGIC),
         .blocks_count = htole32(blocks_count),
         .inodes_count = htole32(inodes_count),

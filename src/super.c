@@ -65,7 +65,7 @@ static int ransomfs_write_inode(struct inode *inode,
     AUDIT(TRACE)
     printk("\tshift: %u\n", inode_block_shift);
     
-    if (ino >= sbi->inodes_count)
+    if (ino >= sbi->sb.inodes_count)
         return 0;
 
     bh = sb_bread(sb, inode_block);
@@ -96,8 +96,10 @@ static int ransomfs_write_inode(struct inode *inode,
 
 static void ransomfs_put_super(struct super_block *sb)
 {
-    struct simplefs_sb_info *sbi = RANSOMFS_SB(sb);
+    struct ransomfs_sb_info *sbi = RANSOMFS_SB(sb);
     if (sbi) {
+        if (sbi->gdt)
+            kfree(sbi->gdt);
         kfree(sbi);
     }
 }
@@ -109,11 +111,11 @@ static int ransomfs_statfs(struct dentry *dentry, struct kstatfs *stat)
 
     stat->f_type = RANSOMFS_MAGIC;
     stat->f_bsize = RANSOMFS_BLOCK_SIZE;
-    stat->f_blocks = sbi->blocks_count;
-    stat->f_bfree = sbi->free_blocks_count;
-    stat->f_bavail = sbi->free_blocks_count;
-    stat->f_files = sbi->inodes_count - sbi->free_inodes_count;
-    stat->f_ffree = sbi->free_inodes_count;
+    stat->f_blocks = sbi->sb.blocks_count;
+    stat->f_bfree = sbi->sb.free_blocks_count;
+    stat->f_bavail = sbi->sb.free_blocks_count;
+    stat->f_files = sbi->sb.inodes_count - sbi->sb.free_inodes_count;
+    stat->f_ffree = sbi->sb.free_inodes_count;
     stat->f_namelen = RANSOMFS_MAX_FILENAME;
 
     return 0;
@@ -131,10 +133,10 @@ static int ransomfs_sync_fs(struct super_block *sb, int wait)
 
     disk_sb = (struct ransomfs_sb_info *) bh->b_data;
 
-    disk_sb->blocks_count = sbi->blocks_count;
-    disk_sb->inodes_count = sbi->inodes_count;
-    disk_sb->free_inodes_count = sbi->free_inodes_count;
-    disk_sb->free_blocks_count = sbi->free_blocks_count;
+    disk_sb->sb.blocks_count = sbi->sb.blocks_count;
+    disk_sb->sb.inodes_count = sbi->sb.inodes_count;
+    disk_sb->sb.free_inodes_count = sbi->sb.free_inodes_count;
+    disk_sb->sb.free_blocks_count = sbi->sb.free_blocks_count;
 
     mark_buffer_dirty(bh);
     if (wait)
@@ -159,11 +161,14 @@ static struct super_operations ransomfs_super_ops = {
 /* Fill the struct superblock from partition superblock */
 int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
 {
-    struct buffer_head *bh = NULL;
-    struct ransomfs_sb_info *dsb = NULL;
+    struct buffer_head *bh = NULL, *bh2 = NULL;
+    struct ransomfs_superblock *dsb = NULL;
     struct ransomfs_sb_info *rbi = NULL;
     struct inode *root_inode = NULL;
     int ret = 0;
+
+    AUDIT(WORK)
+    printk(KERN_INFO "fill super\n");
 
     //Init sb
     sb->s_magic = RANSOMFS_MAGIC;
@@ -175,7 +180,7 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     if (!bh)
         return -EIO;
 
-    dsb = (struct ransomfs_sb_info *) bh->b_data;
+    dsb = (struct ransomfs_superblock*) bh->b_data;
 
     // Check magic number
     if (dsb->magic != sb->s_magic) {
@@ -185,33 +190,49 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
         goto release;
     }
 
-    //fill sb_info 
+    //alloc new superblock 
     rbi = kzalloc(sizeof(struct ransomfs_sb_info), GFP_KERNEL);
     if (!rbi) {
         ret = -ENOMEM;
         goto release;
     }
 
-    rbi->inodes_count = dsb->inodes_count;
-    rbi->blocks_count = dsb->blocks_count;
-    rbi->free_inodes_count = dsb->free_inodes_count;
-	rbi->free_blocks_count = dsb->free_blocks_count;
-	rbi->mtime = ktime_get_real_ns();
+    rbi->sb.inodes_count = dsb->inodes_count;
+    rbi->sb.blocks_count = dsb->blocks_count;
+    rbi->sb.free_inodes_count = dsb->free_inodes_count;
+	rbi->sb.free_blocks_count = dsb->free_blocks_count;
+	rbi->sb.mtime = ktime_get_real_ns();
 
     //pass password up 
     memcpy(data, dsb->passwd_hash, RANSOMFS_PASSWORD_SIZE);
     AUDIT(DEBUG)
     printk("fill super: %s", (char*) data);
 
+    //load the gdt
+    bh2 = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
+    if (!bh2){
+        ret = -EIO;
+        goto free_rbi;
+    }
+    rbi->gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);
+    memcpy(rbi->gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);
+    brelse(bh2);
+
+    //init mutex
+    mutex_init(&rbi->gdt_mutex);
+    mutex_init(&rbi->inode_bitmap_mutex);
+    mutex_init(&rbi->data_bitmap_mutex);
+
     sb->s_fs_info = rbi;
 
     brelse(bh);
+
 
     // set up root inode
     root_inode = ransomfs_iget(sb, 0);
     if (IS_ERR(root_inode)) {
         ret = PTR_ERR(root_inode);
-        goto free_rbi;
+        goto free_gdt;
     }
 
     inode_init_owner(root_inode, NULL, root_inode->i_mode);
@@ -225,6 +246,8 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
 
 iput:
     iput(root_inode);
+free_gdt:
+    kfree(rbi->gdt);
 free_rbi:
     kfree(rbi);
 release:

@@ -64,9 +64,6 @@ NOKPROBE_SYMBOL(umount_ret_handler);
 
 //##################### block dev protection ###############################
 
-//FIXME just here for testing
-int lock_bdev = 0;
-
 //mounted on security_file_open entry
 int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
