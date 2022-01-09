@@ -12,7 +12,7 @@ Details on the implementation are in the [implementation details file](docs/Impl
 
 The disk layout is based on the ext4 FileSystem, the disk is divided in groups and each group has the following organization: 
 
-| ext4 superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
+| rfs superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
 |:-:|:-:|:-:|:-:|:-:|:-:|
 | 1 block | 1 block | 1 block | 1 block | 512 blocks | >= 1 Block |
 
