@@ -67,3 +67,4 @@ No tests have been implemented so far.
 |:-:|:-|:-:|
 |:x:| Create some sort of callback mechanism for the traversing of the extent tree | 5/5 |
 |:x:| Implement concurrency management on the cached gdt | 1/5 |
+|:x:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |

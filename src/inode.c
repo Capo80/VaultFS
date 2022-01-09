@@ -63,7 +63,6 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                 brelse(bh);
            }
         }
-
     } else {
         //tree has depth zero call this function again at lower levels
         struct ransomfs_extent_idx* curr_node;
@@ -127,7 +126,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     // TODO check bitmap somewhere here? maybe?
     
     /* Fail if ino is out of range */
-    if (ino >= sbi->sb.inodes_count)
+    if (ino >= sbi->sb->inodes_count)
         return ERR_PTR(-EINVAL);
 
     /* Get a locked inode from Linux */
@@ -136,13 +135,14 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
         return ERR_PTR(-ENOMEM);
 
     /* If inode is in cache, return it */
-    if (!(inode->i_state & I_NEW))
+    inode->i_sb = sb;
+    if (!(inode->i_state & I_NEW)) {
+        printk("inode in cache\n");
         return inode;
-
+    }
     AUDIT(TRACE)
     printk(KERN_INFO "Reding inode from disk\n");
 
-    ci = RANSOMFS_INODE(inode);
     /* Read inode from disk and initialize */
     bh = sb_bread(sb, inode_block);
     if (!bh) {
@@ -155,9 +155,6 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     cinode += inode_block_shift;
 
     inode->i_ino = ino;
-    inode->i_sb = sb;
-    //inode->i_op = &ransomfs_inode_ops;
-
     inode->i_mode = le16_to_cpu(cinode->i_mode);
     i_uid_write(inode, le16_to_cpu(cinode->i_uid));
     i_gid_write(inode, le16_to_cpu(cinode->i_gid));
@@ -174,7 +171,9 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     printk(KERN_INFO "Saved disk info on inode\n");
 
     //copy extent tree
+    ci = RANSOMFS_INODE(inode);
     memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
+    ci->i_committed = le16_to_cpu(cinode->i_committed);
 
     if (S_ISDIR(inode->i_mode)) {
         inode->i_op = &ransomfs_dir_inode_ops;
@@ -183,11 +182,11 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
         inode->i_op = &ransomdfs_file_inode_ops;
         inode->i_fop = &ransomfs_file_ops;
         inode->i_mapping->a_ops = &ransomfs_aops;
-    } else if (S_ISLNK(inode->i_mode)) {
-        //strncpy(ci->i_data, cinode->i_data, sizeof(ci->i_data));
-        //inode->i_link = ci->i_data;
-        //inode->i_op = &symlink_inode_ops;
     }
+
+    sbi = RANSOMFS_SB(inode->i_sb);
+    AUDIT(WORK)
+    printk("gdt: %p\n", sbi->gdt);
 
     brelse(bh);
 
@@ -222,9 +221,10 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
         printk(KERN_INFO "inode for %s found, it is number %d\n", child_dentry->d_name.name, ino);
         //read the new inode from disk
         inode = ransomfs_iget(sb, ino);
-    } else
+    } else {
         AUDIT(TRACE)
         printk(KERN_INFO "inode for %s not found\n", child_dentry->d_name.name);
+    }
 
     //update dentry
     parent_inode->i_atime = current_time(parent_inode);
@@ -269,8 +269,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     printk(KERN_INFO "Found space for new file at group %u\n", new_block_pos.group_idx);
 
     //update GDT in memory
-    sbi->gdt[new_block_pos.group_idx].free_blocks_count--;                //FIXME need concurrency checks here (just a __sync with a check on 0)
-    sbi->gdt[new_block_pos.group_idx].free_inodes_count--;
+    sbi->gdt[new_block_pos.group_idx].free_blocks_count -= block_count;                //FIXME need concurrency checks here (just a __sync with a check on 0)
 
     //load data bitmap from disk
     bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
@@ -285,9 +284,10 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     if (new_block_pos.block_idx >= RANSOMFS_BLOCK_SIZE*8) {
         AUDIT(DEBUG)
         printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
-        sbi->gdt[new_block_pos.group_idx].free_blocks_count++;
+        sbi->gdt[new_block_pos.group_idx].free_blocks_count += block_count;
         new_block_pos.group_idx = -ENOTRECOVERABLE;
         new_block_pos.error = 1;
+        mutex_unlock(&sbi->data_bitmap_mutex);
         return new_block_pos;
     }
 
@@ -295,7 +295,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     printk(KERN_INFO "Found %d free blocks at index %u\n", block_count, new_block_pos.block_idx);
 
     //update datablock bitmap
-    bitmap_set(data_bitmap, new_block_pos.block_idx, 1);
+    bitmap_set(data_bitmap, new_block_pos.block_idx, block_count);
     mark_buffer_dirty(bh);
     brelse(bh);
     
@@ -314,7 +314,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
 static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
     struct super_block* sb = dir->i_sb;
-    struct inode* inode;
+    struct inode* inode = NULL;
     struct ransomfs_inode_info* new_info, *dir_info;
     struct ransomfs_sb_info* sbi = RANSOMFS_SB(sb);
     unsigned long* data_bitmap, *inode_bitmap;
@@ -322,7 +322,6 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     unsigned short curr_space;
     uint32_t ino;
     int ret = 0;
-    uint32_t group_idx;
     uint32_t parent_group_idx = dir->i_ino / RANSOMFS_INODES_PER_GROUP;
     uint32_t phys_block_idx = 0, inode_table_idx = 0;
     block_pos_t new_block_pos;
@@ -365,7 +364,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     //find free space for inode in table
     //we have a lot more space than needed for inodes, so if we found a data block we will always find space for an inode
-    bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
+    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
 
@@ -384,7 +383,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //down here we don't need to worry about concurrency we have already reserved the zones on the disk that we are going to use
     
     //get the new inode
-    ino = RANSOMFS_INODES_PER_GROUP*group_idx + inode_table_idx;
+    ino = RANSOMFS_INODES_PER_GROUP*new_block_pos.group_idx + inode_table_idx;
     inode = ransomfs_iget(sb, ino);
     if (IS_ERR(inode)) {
         ret = PTR_ERR(inode);
@@ -398,6 +397,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     inode_init_owner(inode, dir, mode);
     new_info = RANSOMFS_INODE(inode);
     ransomfs_init_extent_tree(new_info, phys_block_idx);
+    new_info->i_committed = 0;
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
     inode->i_blocks = 1;
     inode->i_ino = ino;
@@ -435,7 +435,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
 correct_bitmaps:
     //we failed correct the bitmaps    
-    bh = sb_bread(sb, 2 + group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
+    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
     bitmap_clear(inode_bitmap, inode_table_idx, 1);
@@ -446,13 +446,13 @@ correct_bitmaps:
     bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->data_bitmap_mutex);
-    bitmap_clear(data_bitmap, new_block_pos.block_idx, 1);
+    bitmap_clear(data_bitmap, new_block_pos.block_idx, curr_space);
     mark_buffer_dirty(bh);
     brelse(bh);
     mutex_unlock(&sbi->data_bitmap_mutex);
 
     //we failed correct the gdt
-    sbi->gdt[new_block_pos.group_idx].free_blocks_count++;                //FIXME need concurrency checks here
+    sbi->gdt[new_block_pos.group_idx].free_blocks_count += curr_space;                //FIXME need concurrency checks here
     sbi->gdt[new_block_pos.group_idx].free_inodes_count++;
 success:
     return ret;

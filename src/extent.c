@@ -268,7 +268,7 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
             //update header
             block_head->entries++;
 
-            //new tree allocated rerun this funcion on the block head again - this time we will have space
+            //new tree allocated rerun this function on the block head again - this time we will have space
             return ransomfs_allocate_new_block_rec(sb, block_head, logical_block_no, initial_logical_block, initial_phys_block);
 
         }

@@ -2,9 +2,9 @@
 #define RANSOMFS_H
 
 //some debug print helpers
-#define DEBUG 0
-#define TRACE 0
-#define ERROR 0
+#define DEBUG 1
+#define TRACE 1
+#define ERROR 1
 #define WORK  1
 #define AUDIT(level) 	if(level)
 
@@ -58,15 +58,15 @@ struct ransomfs_extent {
 };
 
 struct ransomfs_inode {
-    uint16_t i_mode;   /* File mode */
-    uint16_t i_uid;    /* Owner id */
-    uint16_t i_gid;    /* Group id */
-	uint16_t unused;   /* pad size to 128 */
-    uint32_t i_size;   /* Size in bytes */
-    uint32_t i_ctime;  /* Inode change time */
-    uint32_t i_atime;  /* Access time */
-    uint32_t i_mtime;  /* Modification time */
-    uint32_t i_blocks; /* Block count */
+    uint16_t i_mode;   			// File mode 
+    uint16_t i_uid;    			// Owner id 
+    uint16_t i_gid;    			// Group id 
+	uint16_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
+    uint32_t i_size;   			// Size in bytes 
+    uint32_t i_ctime;  			// Inode change time 
+    uint32_t i_atime;  			// Access time 
+    uint32_t i_mtime;  			// Modification time 
+    uint32_t i_blocks; 			// Block count 
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
 };
 
@@ -119,13 +119,14 @@ typedef struct block_pos {
 struct ransomfs_inode_info {
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
+	uint16_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
 };
 
 
 //superblock in memory
 struct ransomfs_sb_info {
 
-	struct ransomfs_superblock sb;
+	struct ransomfs_superblock* sb;
 
 	struct ransomfs_group_desc* gdt; //cache the gdt
 

@@ -83,7 +83,6 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
 /* Unmount a ransomfs partition */
 void ransomfs_kill_sb(struct super_block *sb)
 {
-
     kill_block_super(sb);
 
     AUDIT(TRACE)

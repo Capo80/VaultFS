@@ -39,14 +39,14 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     map_bh(bh_result, sb, phys_block_no);
 
     AUDIT(TRACE)
-    printk(KERN_INFO "Mapping complete\n");
+    printk(KERN_INFO "Mapping complete %d\n", phys_block_no);
     return 0;
 
 }
 
 //called by the cache to write and read pages to memory
 static int ransomfs_readpage(struct file *file, struct page *page) {
-    return block_read_full_page(page, ransomfs_file_get_block);
+    return mpage_readpage(page, ransomfs_file_get_block);
 }
 static int ransomfs_writepage(struct page *page, struct writeback_control *wbc) {
     return block_write_full_page(page, ransomfs_file_get_block, wbc);
@@ -61,7 +61,7 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     int err;
     
     AUDIT(TRACE)
-    printk(KERN_INFO "Write begin called %d\n", current->pid);
+    printk(KERN_INFO "Write begin called\n");
 
     //if (pos + len > RANSOMFS_MAX_FILESIZE)
     //    return -ENOSPC;
@@ -73,10 +73,9 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     else
         new_blocks_needed = 0;
 
-    if (new_blocks_needed  > sbi->sb.free_blocks_count)
+    if (new_blocks_needed  > sbi->sb->free_blocks_count)
         return -ENOSPC;
     
-
     AUDIT(DEBUG)
     printk(KERN_INFO "Checks passed %llu - %d\n", pos, len);
 
@@ -98,13 +97,10 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
 //update the inode metadata - truncate the file if necessary (yes, truncation can happen in this filesystem if it is in the same session)
 static int ransomfs_write_end(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int copied, struct page *page, void *fsdata) {
 
-    struct inode *inode = file->f_inode;    
+    struct inode *inode = file->f_inode;  
     uint32_t nr_blocks_before;
     int ret;
 
-    AUDIT(TRACE)
-    printk(KERN_INFO "Write end called\n");
-    
     //do the common filesystem stuff
     ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
     if (ret < len) {
@@ -136,12 +132,27 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
 
 static int ransomfs_file_open(struct inode *inode, struct file *filp) {
 
+    struct ransomfs_inode_info *rsi;
+    
     AUDIT(TRACE)
     printk(KERN_INFO "open called\n");
 
-    //TODO here we implement write protection
-
-	return generic_file_open(inode, filp);
+    //check if we can write
+    if (inode != NULL && filp->f_mode & FMODE_WRITE) {
+        rsi = RANSOMFS_INODE(inode);
+        if (rsi->i_committed == 1) {
+            //failed - already committed
+            return -EINVAL;
+        } else {
+            //success - first access
+            //rsi->i_committed = 1;
+            if (!__sync_bool_compare_and_swap(&rsi->i_committed, 0, 1)) {
+               //somebody else swapped faster than us - fail
+               return -EINVAL;
+            }
+        }
+    }
+    return generic_file_open(inode, filp);
 }
 
 static sector_t ransomfs_bmap(struct address_space *mapping, sector_t block)

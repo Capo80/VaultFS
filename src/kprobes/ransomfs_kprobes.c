@@ -4,7 +4,8 @@
 
 static void sucurity_info_reclaim_callback(struct rcu_head *rcu) {
 	struct ransomfs_security_info *info = container_of(rcu, struct ransomfs_security_info, rcu);
-	kfree(info);
+	if (info != NULL)	
+		kfree(info);
 }
 
 //mounted on security_sb_umount entry
@@ -47,6 +48,9 @@ int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 		}
 	}
 	rcu_read_unlock();
+	AUDIT(DEBUG)
+	printk(KERN_INFO "umount exiting: %s\n", path);
+
 	kfree(buffer);
 	return 0;
 }
@@ -78,7 +82,7 @@ int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 
 	//pass by deafult
 	res->pass = 1;
-    	
+    return 0;
 	bdev = lookup_bdev(path);
 	kfree(buffer);
 	if (!IS_ERR(bdev)) {
