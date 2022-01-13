@@ -57,7 +57,7 @@ No tests have been implemented so far.
 | :heavy_check_mark: | File/Directory Creation | |
 | :heavy_check_mark: | File Write | |
 | :heavy_check_mark: | File Read | |
-| :gear: | Write Protection | |
+| :heavy_check_mark: | Write Protection | |
 | :heavy_check_mark: | Umount Protection | |
 | :heavy_check_mark: | Block Device Protection | |
 
