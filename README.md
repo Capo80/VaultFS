@@ -78,7 +78,7 @@ Care, these functions will work only while the PWD is the tests folder.
 
 Currently 2 tests have been implemented:
 - Big File Test, creates and copies a "big" file to the FS, used to make sure that file can span multiple groups without problems;
-- Extent resize, creates to files and writem to them in way to get them to have a non-consecutive block allocation, used to verify that an extent tree will get correctly resize if it doesn't fit anymore in his block;
+- Extent resize, creates to files and write to them in way to get them to have a non-consecutive block allocation, used to verify that an extent tree will get correctly resized if it doesn't fit anymore in his block;
 
 To run all tests make sure you in the test folder and run:
 
