@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <linux/fs.h>
 #include <unistd.h>
+#include <openssl/sha.h>
 
 #include "ransomfs.h"
 
@@ -16,7 +17,7 @@ struct superblock {
     char padding[RANSOMFS_BLOCK_SIZE - sizeof(struct ransomfs_superblock)]; /* Padding to match block size */
 };
 
-static struct superblock *write_superblock(int fd, struct stat *fstats)
+static struct superblock *write_superblock(int fd, struct stat *fstats, unsigned char* password)
 {
     struct superblock *sb = malloc(sizeof(struct superblock));
     if (!sb)
@@ -27,6 +28,8 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
     uint32_t mod = inodes_count % RANSOMFS_INODES_PER_BLOCK;
     if (mod)
         inodes_count += RANSOMFS_INODES_PER_BLOCK - mod;
+    unsigned char hash[SHA512_DIGEST_LENGTH];
+    SHA512(password, strlen((char*)password), hash);
 
     memset(sb, 0, sizeof(struct superblock));
     sb->info = (struct ransomfs_superblock) {
@@ -35,11 +38,10 @@ static struct superblock *write_superblock(int fd, struct stat *fstats)
         .inodes_count = htole32(inodes_count),
         .free_inodes_count = htole32(inodes_count - 1),
         .free_blocks_count = htole32(blocks_count - 1), //TODO this is wrong
-        //.passwd_hash = sha512("1234")
-        .passwd_hash = "\xd4\x04U\x9f`.\xabo\xd6\x02\xacv\x80\xda\xcb\xfa\xad\xd1""603^\x95\x1f\tz\xf3\x90\x0e\x9d\xe1v\xb6\xdb(Q/.\x00\x0b\x9d\x04\xfb\xa5\x13>\x8b\x1cn\x8d\xf5\x9d\xb3\xa8\xab\x9d`\xbeK\x97\xcc\x9e\x81\xdb",     
-        //.passwd_hash = "1234",
+        //.passwd_hash = sha512(password)   
     };
 
+    memcpy(sb->info.passwd_hash, hash, SHA512_DIGEST_LENGTH);
     printf(
         "Superblock: (%lu)\n"
         "\tmagic=%#x\n"
@@ -82,7 +84,7 @@ int write_root_inode(int fd) {
     root_extent.depth = 0;
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
-	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user
+	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user? maybe not
 	root_inode.i_size = htole32(RANSOMFS_BLOCK_SIZE); //empty directory still has one block allocated
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
 	root_inode.i_blocks = htole32(1);
@@ -147,8 +149,8 @@ int write_padding(int fd, size_t padding_size) {
 
 int main(int argc, char **argv) {
 	
-    if (argc != 2) {
-        fprintf(stderr, "Usage: %s disk\n", argv[0]);
+    if (argc != 3) {
+        fprintf(stderr, "Usage: %s disk mount_password\n", argv[0]);
         return EXIT_FAILURE;
     }
 
@@ -190,7 +192,7 @@ int main(int argc, char **argv) {
     }
 
     /* Write superblock (block 0) */
-    struct superblock *sb = write_superblock(fd, &stat_buf);
+    struct superblock *sb = write_superblock(fd, &stat_buf, (unsigned char*) argv[2]);
     if (!sb) {
         perror("write_superblock():");
         ret = EXIT_FAILURE;

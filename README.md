@@ -30,7 +30,11 @@ The major differences with the ext4 FileSystem are:
 
 ## Build
 
-Enter the source folder and run: ```make```
+This module has been written and tested on kernel 5.8, different kernel versions are not garanteed to work (and probably won't).
+
+### The hard way
+
+Enter the src folder and run: ```make```
 
 The MakeFile will create a RansomFS formatted test image in the current folder name ```test.img```
 
@@ -43,9 +47,44 @@ insmod ransomfs.ko
 mount -o loop -t ransomfs test.img <directory>
 ```
 
-## Test
+The File System will be mounted with the defult password ```1234```, to umount we need to call the "umount_ctl" syscall with this password, so run:
 
-No tests have been implemented so far.
+```
+user/unlock 1234
+umount <directory>
+```
+
+### The easy way
+
+Go in the tests folder, and to mount run:
+
+```
+sudo su
+. ./utils.sh
+standard_setup
+```
+
+This will create a temporary image in the /tmp folder and mount the FS to /tmp/mnt, to umount:
+
+```
+sudo su
+. ./utils.sh
+standard_cleanup
+```
+
+Care, these functions will work only while the PWD is the tests folder.
+
+## Tests
+
+Currently 2 tests have been implemented:
+- Big File Test, creates and copies a "big" file to the FS, used to make sure that file can span multiple groups without problems;
+- Extent resize, creates to files and writem to them in way to get them to have a non-consecutive block allocation, used to verify that an extent tree will get correctly resize if it doesn't fit anymore in his block;
+
+To run all tests make sure you in the test folder and run:
+
+```
+./run_all_tests
+```
 
 ## Current Progress
 
