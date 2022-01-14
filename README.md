@@ -50,7 +50,7 @@ mount -o loop -t ransomfs test.img <directory>
 The File System will be mounted with the defult password ```1234```, to umount we need to call the "umount_ctl" syscall with this password, so run:
 
 ```
-user/unlock 1234
+user/unlock <directory> 1234
 umount <directory>
 ```
 
