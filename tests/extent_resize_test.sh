@@ -31,14 +31,14 @@ result=$?
 if [ $result == 0 ]
 then 
     print_update "[$test_name] Creating check files...";
-    printf %4500s |tr " " "A" > /tmp/file1
-    printf %4500s |tr " " "B" > /tmp/file2
+    printf %67500s | tr " " "A" > /tmp/file1
+    printf %67500s | tr " " "B" > /tmp/file2
 
     print_update "[$test_name] Checking diff...";
     diff /tmp/file1 $mount_path/file1
-    $result = $?
-    diff /tmp/file1 $mount_path/file2
-    $result = $result | $?
+    result1=$?
+    diff /tmp/file2 $mount_path/file2
+    result2=$?
 
     print_update "[$test_name] Cleaning up check files...";
     rm /tmp/file1
@@ -55,7 +55,7 @@ print_update "[$test_name] Cleaning up File System..."
 standard_cleanup
 
 #print test result
-if [ $result -eq 0 ]
+if [[ $result1 -eq 0 && $result2 -eq 0 && $result -eq 0 ]]
 then
     echo $Green"[$test_name] [SUCCESS] File has been copied correctly"$Color_Off;
 else

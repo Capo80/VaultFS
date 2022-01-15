@@ -19,22 +19,23 @@ int add_file_to_dir_record(struct super_block* sb, uint32_t block_no, const unsi
     //iterate over records of single block
     while (off < RANSOMFS_BLOCK_SIZE) {
         
-        //async add file to folder
-        if (dir_record->ino == 0)
-            if (__sync_bool_compare_and_swap(&dir_record->ino, 0, ino)) {
-                dir_record->name_len = strlen(filename);
-                memcpy(dir_record->filename, filename, dir_record->name_len+1);
-                dir_record->file_type = file_type;
-                mark_buffer_dirty(bh);
-                brelse(bh);
-                //success
-                return 1;
-            }
+        //add file to folder
+        if (dir_record->ino == 0) {
+            dir_record->ino = ino;
+            dir_record->name_len = strlen(filename);
+            memcpy(dir_record->filename, filename, dir_record->name_len+1);
+            dir_record->file_type = file_type;
+            mark_buffer_dirty(bh);
+            brelse(bh);
+            //success
+            return 1;
+        }
         dir_record++;
         off += sizeof(struct ransomfs_dir_record);
     }
 
     brelse(bh);
+
     //failure
     return 0;
 }
@@ -152,7 +153,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
     AUDIT(TRACE)
     printk(KERN_INFO "Extent full for directory - expanding\n");
-    //failed - we no more space in this extent - allocate a new block and add the file there
+    //failed - we have no more space in this extent - allocate a new block and add the file there
     //find the new logical block number
     last_logic_no = get_last_logical_block_no(sb, block_head);
     
@@ -171,7 +172,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
     AUDIT(TRACE)
     printk(KERN_INFO "Extent tree updated\n");
-    //TODO ugly?
+    //TODO so ugly - should probrably change the ret of the other function
     if (ret < 0)
         return ret;
     else if (ret > 0)

@@ -18,7 +18,7 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     AUDIT(TRACE)
     printk(KERN_INFO "Mapping requested\n");
 
-    phys_block_no = ransomfs_exent_search_block(ci->extent_tree, iblock);
+    phys_block_no = ransomfs_extent_search_block(sb, ci->extent_tree, iblock);
     if (phys_block_no == 0) {
         //block not allocated
         AUDIT(TRACE)

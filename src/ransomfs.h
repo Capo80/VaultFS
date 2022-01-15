@@ -131,7 +131,6 @@ struct ransomfs_sb_info {
 	struct ransomfs_group_desc* gdt; //cache the gdt
 
 	//mutex to sync modification
-	struct mutex gdt_mutex;
 	struct mutex inode_bitmap_mutex; //TODO theese 2 should be one per group
 	struct mutex data_bitmap_mutex;
 
@@ -152,7 +151,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
 
 /* extent.c */
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
-uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
+uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
 uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_block);
 
 /* oprations */

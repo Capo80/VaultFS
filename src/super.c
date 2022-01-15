@@ -150,8 +150,12 @@ static int ransomfs_sync_fs(struct super_block *sb, int wait)
         sync_dirty_buffer(bh);
     brelse(bh);
 
-    //TODO sync GDT down here?
-
+    //update GDT on disk
+    bh = sb_bread(sb, RANSOMFS_GDT_BLOCK_NR);
+    memcpy(bh->b_data, sbi->gdt, RANSOMFS_BLOCK_SIZE);
+    mark_buffer_dirty(bh);                             
+    brelse(bh);
+    
     return 0;
 }
 
@@ -221,15 +225,13 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
         goto free_rbi;
     }
 
-    rbi->gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);  //TODO cache maybe?
+    rbi->gdt = kzalloc(RANSOMFS_BLOCK_SIZE, GFP_KERNEL);
     memcpy(rbi->gdt, bh->b_data, RANSOMFS_BLOCK_SIZE);        
     
-    rbi->gdt_mutex = (struct mutex) __MUTEX_INITIALIZER(rbi->gdt_mutex);
     rbi->inode_bitmap_mutex = (struct mutex) __MUTEX_INITIALIZER(rbi->inode_bitmap_mutex);
     rbi->data_bitmap_mutex = (struct mutex) __MUTEX_INITIALIZER(rbi->data_bitmap_mutex);
 
     //init mutex
-    mutex_init(&rbi->gdt_mutex);
     mutex_init(&rbi->inode_bitmap_mutex);
     mutex_init(&rbi->data_bitmap_mutex);
 

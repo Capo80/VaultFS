@@ -7,7 +7,8 @@
 #include "ransomfs.h"
 
 //find file phisical block by his logical block number 
-uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, uint32_t logical_block_no) {
+//return block_number in success - 0 in failure
+uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no) {
 
     uint16_t i = 0;
     struct ransomfs_extent* curr_leaf;
@@ -34,10 +35,37 @@ uint32_t ransomfs_exent_search_block(struct ransomfs_extent_header* block_head, 
     } else {
         //tree has depth zero call this function again at lower levels
         struct ransomfs_extent_idx* curr_node;
+        struct ransomfs_extent_header* new_block_head;
+        int ret;
+        struct buffer_head* bh;
+
         for (i = 0; i < block_head->entries; i++) {
-            //int ret = 0;
-            curr_node = (struct ransomfs_extent_idx*) block_head + i + 1;
-            //TODO compelete this
+            
+            AUDIT(TRACE)
+            printk("Entering entry %d", i);
+            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+
+            bh = sb_bread(sb, curr_node->leaf_block);
+            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+
+            //check magic
+            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                AUDIT(ERROR)
+                printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
+                return -ENOTRECOVERABLE;
+            }
+
+            //call again with new block head
+            ret = ransomfs_extent_search_block(sb, new_block_head, logical_block_no);
+
+            if (ret != 0) { 
+                //operation was successful, we can stop here   
+                brelse(bh);
+                return ret;
+            }
+
+            //operation failed try again with next node
+            brelse(bh);
         }
 
     }
@@ -59,7 +87,7 @@ block_pos_t ransomfs_allocate_tree_node(struct super_block* sb, unsigned short d
     printk(KERN_INFO "Allocating a new tree block with depth %d\n", depth);
     
     //we need depth+1 blocks for the tree
-    //TODO they don't need to be contiguos
+    //TODO they don't need to be contiguous
     new_block_pos = ransomfs_get_free_blocks(sb, initial_phys_block, depth+1);
     if (new_block_pos.error == 1)
         return new_block_pos;
@@ -135,7 +163,7 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
             if (nr_new_blocks < 0) {
                 AUDIT(ERROR)
                 printk(KERN_INFO "The block is already allocated\n");
-                return ransomfs_exent_search_block(block_head, logical_block_no);
+                return ransomfs_extent_search_block(sb, block_head, logical_block_no);
             }
 
             AUDIT(DEBUG)
@@ -160,9 +188,10 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
 
                     //add new leaf to exent tree
                     if (block_head->entries == block_head->max) {
+
                         //no more space
                         //deallocate block
-                        sbi->gdt[c].free_blocks_count += nr_new_blocks;
+                        __sync_fetch_and_add(&sbi->gdt[c].free_blocks_count, nr_new_blocks);
                         bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
                         data_bitmap = (unsigned long*) bh->b_data;
                         mutex_lock_interruptible(&sbi->data_bitmap_mutex);
@@ -327,6 +356,7 @@ uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_ext
     return ransomfs_allocate_new_block_rec(sb, block_head, logical_block_no, 0, initial_phys_block);
     
 }
+
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no) {
 
     struct ransomfs_extent_header head;

@@ -83,7 +83,7 @@ Currently 2 tests have been implemented:
 To run all tests make sure you in the test folder and run:
 
 ```
-./run_all_tests
+./run_all_tests <DEBUG> # add DEBUG to see the full output
 ```
 
 ## Current Progress
@@ -106,4 +106,5 @@ To run all tests make sure you in the test folder and run:
 |:-:|:-|:-:|
 |:x:| Create some sort of callback mechanism for the traversing of the extent tree | 5/5 |
 |:x:| Implement concurrency management on the cached gdt | 1/5 |
-|:x:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |
+|:heavy_check_mark:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |
+|:x:| The search for blocks in the allocation need to be improved in term of closeness to the other blocks | 4/5 |
