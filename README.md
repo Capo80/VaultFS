@@ -50,7 +50,7 @@ mount -o loop -t ransomfs test.img <directory>
 The File System will be mounted with the defult password ```1234```, to umount we need to call the "umount_ctl" syscall with this password, so run:
 
 ```
-user/unlock 1234
+user/unlock <directory> 1234
 umount <directory>
 ```
 
@@ -78,7 +78,7 @@ Care, these functions will work only while the PWD is the tests folder.
 
 Currently 2 tests have been implemented:
 - Big File Test, creates and copies a "big" file to the FS, used to make sure that file can span multiple groups without problems;
-- Extent resize, creates to files and writem to them in way to get them to have a non-consecutive block allocation, used to verify that an extent tree will get correctly resize if it doesn't fit anymore in his block;
+- Extent resize, creates to files and write to them in way to get them to have a non-consecutive block allocation, used to verify that an extent tree will get correctly resized if it doesn't fit anymore in his block;
 
 To run all tests make sure you in the test folder and run:
 
