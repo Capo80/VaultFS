@@ -183,7 +183,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     }
 
     sbi = RANSOMFS_SB(inode->i_sb);
-    
+
     brelse(bh);
 
     /* Unlock the inode to make it usable */
@@ -292,6 +292,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
         AUDIT(DEBUG)
         printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
         __sync_fetch_and_add(&sbi->gdt[new_block_pos.group_idx].free_blocks_count, block_count);
+        __sync_fetch_and_add(&sbi->sb->free_blocks_count, block_count);
         new_block_pos.group_idx = -ENOTRECOVERABLE;
         new_block_pos.error = 1;
         mutex_unlock(&sbi->data_bitmap_mutex);
@@ -307,6 +308,9 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     brelse(bh);
     
     mutex_unlock(&sbi->data_bitmap_mutex);
+
+    //update superblock
+    __sync_fetch_and_sub(&sbi->sb->free_blocks_count, block_count);
 
     return new_block_pos;
 
@@ -364,7 +368,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     phys_block_idx = new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + RANSOMFS_INODES_GROUP_BLOCK_COUNT + 4 + new_block_pos.block_idx;
 
     //find free space for inode in table
-    //we have a lot more space than needed for inodes, so if we found a data block we will always find space for an inode
+    //we have a more space than needed for inodes, so if we did find a data block we will always find space for an inode
     bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
@@ -397,7 +401,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //initialize the inode
     inode_init_owner(inode, dir, mode);
     new_info = RANSOMFS_INODE(inode);
-    ransomfs_init_extent_tree(new_info, phys_block_idx);
+    ransomfs_init_extent_tree(new_info, phys_block_idx, curr_space);
     new_info->i_committed = 0;
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
     inode->i_blocks = 1;
@@ -429,6 +433,10 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);
         d_instantiate(dentry, inode);
+
+        //update superblock
+        __sync_fetch_and_sub(&sbi->sb->free_inodes_count, 1);
+
         AUDIT(TRACE)
         printk(KERN_INFO "Inode added to directory - Creation SUCCESS\n");
         goto success;
@@ -452,9 +460,10 @@ correct_bitmaps:
     brelse(bh);
     mutex_unlock(&sbi->data_bitmap_mutex);
 
-    //we failed correct the gdt
+    //we failed correct the gdt and superblock
     __sync_fetch_and_add(&sbi->gdt[new_block_pos.group_idx].free_blocks_count, curr_space);
     __sync_fetch_and_add(&sbi->gdt[new_block_pos.group_idx].free_inodes_count, 1);
+    __sync_fetch_and_add(&sbi->sb->free_blocks_count, curr_space);
 success:
     return ret;
 }

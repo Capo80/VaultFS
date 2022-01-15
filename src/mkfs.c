@@ -24,20 +24,20 @@ static struct superblock *write_superblock(int fd, struct stat *fstats, unsigned
         return NULL;
 
     uint32_t blocks_count = fstats->st_size / RANSOMFS_BLOCK_SIZE;
-    uint32_t inodes_count = blocks_count; //TODO this is wrong
-    uint32_t mod = inodes_count % RANSOMFS_INODES_PER_BLOCK;
-    if (mod)
-        inodes_count += RANSOMFS_INODES_PER_BLOCK - mod;
+    uint32_t groups_count = (blocks_count-2) / RANSOMFS_BLOCKS_PER_GROUP;
+    uint32_t real_block_count = groups_count*(RANSOMFS_BLOCKS_PER_GROUP - RANSOMFS_INODES_GROUP_BLOCK_COUNT - 2);
+    uint32_t inodes_count = groups_count*RANSOMFS_INODES_PER_GROUP;
+
     unsigned char hash[SHA512_DIGEST_LENGTH];
     SHA512(password, strlen((char*)password), hash);
 
     memset(sb, 0, sizeof(struct superblock));
     sb->info = (struct ransomfs_superblock) {
         .magic = htole32(RANSOMFS_MAGIC),
-        .blocks_count = htole32(blocks_count),
+        .blocks_count = htole32(real_block_count),
         .inodes_count = htole32(inodes_count),
+        .free_blocks_count = htole32(real_block_count - 1),
         .free_inodes_count = htole32(inodes_count - 1),
-        .free_blocks_count = htole32(blocks_count - 1), //TODO this is wrong
         //.passwd_hash = sha512(password)   
     };
 
@@ -74,7 +74,7 @@ int write_root_inode(int fd) {
     memset(&leaf_extent, 0, sizeof(struct ransomfs_extent));
     leaf_extent.file_block = 0;
     leaf_extent.len = htole16(1);
-    leaf_extent.data_block = htole32(516); //first datablock of the file system
+    leaf_extent.data_block = htole32(2 + 2 + RANSOMFS_INODES_GROUP_BLOCK_COUNT); //first datablock of the file system
 
     struct ransomfs_extent_header root_extent;
     memset(&root_extent, 0, sizeof(struct ransomfs_extent_header));
@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
     }
 
     //Writing group 0 table - one block/inode occupied by root
-    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-1, RANSOMFS_INODES_PER_GROUP-1)) {
+    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-RANSOMFS_INODES_GROUP_BLOCK_COUNT-3, RANSOMFS_INODES_PER_GROUP-1)) {
 		perror("group 0 desc table:");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
@@ -210,7 +210,7 @@ int main(int argc, char **argv) {
     uint32_t blocks_count = stat_buf.st_size / RANSOMFS_BLOCK_SIZE;
     uint32_t block_desc_count = blocks_count / RANSOMFS_BLOCKS_PER_GROUP;
     for (int i = 0; i < block_desc_count; i++) {
-        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP, RANSOMFS_INODES_PER_GROUP)) {
+        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-RANSOMFS_INODES_GROUP_BLOCK_COUNT-2, RANSOMFS_INODES_PER_GROUP)) {
             perror("groups desc table:");
             ret =  EXIT_FAILURE;
             goto free_sb;

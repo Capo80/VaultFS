@@ -16,8 +16,8 @@
 //Sytem constants e limitations
 #define RANSOMFS_BLOCK_SIZE 					(1 << 12) // 4 KB
 #define RANSOMFS_BLOCKS_PER_GROUP				32768
-#define RANSOMFS_INODES_PER_GROUP				16384
-#define RANSOMFS_INODES_GROUP_BLOCK_COUNT 		512
+#define RANSOMFS_INODES_PER_GROUP				32768
+#define RANSOMFS_INODES_GROUP_BLOCK_COUNT 		1024
 #define RANSOMFS_DIR_RECORD_PER_BLOCK			15
 #define RANSOMFS_GROUPDESC_PER_BLOCK			512
 #define RANSOMFS_INODES_PER_BLOCK 				32
@@ -29,7 +29,7 @@
 #define RANSOMFS_MAX_FOLDER_FILES				65536
 #define RANSOMFS_MAX_DEPTH						5
 
-#define RANSOMFS_INITIAL_FILE_SPACE				4 //number of blocks we would like to leave free after the initial allocation of a file
+#define RANSOMFS_INITIAL_FILE_SPACE				4 //number of blocks allocate to a file when we create it
 
 #pragma pack(2)
 struct ransomfs_extent_header {
@@ -150,7 +150,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino);
 block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_group_idx, uint32_t block_count);
 
 /* extent.c */
-void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no);
+void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no, uint32_t first_node_len);
 uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
 uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_block);
 

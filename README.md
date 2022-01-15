@@ -14,7 +14,7 @@ The disk layout is based on the ext4 FileSystem, the disk is divided in groups a
 
 | rfs superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
 |:-:|:-:|:-:|:-:|:-:|:-:|
-| 1 block | 1 block | 1 block | 1 block | 512 blocks | >= 1 Block |
+| 1 block | 1 block | 1 block | 1 block | 1024 blocks | 31742 1 Block |
 
 The separation in blocks allows us to allocate and find blocks more efficiently and it also makes it esier to avoid fragmentation.
 
@@ -107,4 +107,4 @@ To run all tests make sure you in the test folder and run:
 |:x:| Create some sort of callback mechanism for the traversing of the extent tree | 5/5 |
 |:x:| Implement concurrency management on the cached gdt | 1/5 |
 |:heavy_check_mark:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |
-|:x:| The search for blocks in the allocation need to be improved in term of closeness to the other blocks | 4/5 |
+|:x:| The search for blocks in the allocation needs to be improved in term of closeness to the other blocks | 4/5 |

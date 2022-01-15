@@ -192,6 +192,7 @@ uint32_t ransomfs_allocate_new_block_rec(struct super_block* sb, struct ransomfs
                         //no more space
                         //deallocate block
                         __sync_fetch_and_add(&sbi->gdt[c].free_blocks_count, nr_new_blocks);
+                        __sync_fetch_and_add(&sbi->sb->free_blocks_count, nr_new_blocks);
                         bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
                         data_bitmap = (unsigned long*) bh->b_data;
                         mutex_lock_interruptible(&sbi->data_bitmap_mutex);
@@ -357,7 +358,7 @@ uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_ext
     
 }
 
-void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no) {
+void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no, uint32_t first_node_len) {
 
     struct ransomfs_extent_header head;
     struct ransomfs_extent leaf;
@@ -372,7 +373,7 @@ void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first
     //the only leaf
     memset(&leaf, 0, sizeof(struct ransomfs_extent_header));
     leaf.file_block = 0;
-    leaf.len = 1;
+    leaf.len = first_node_len;
     leaf.data_block = first_block_no;
 
     //save to inode
