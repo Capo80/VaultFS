@@ -52,7 +52,7 @@ static int ransomfs_write_inode(struct inode *inode,
     uint32_t ino = inode->i_ino;
     uint32_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
     uint32_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
-    uint32_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
+    uint32_t inode_block = RANSOMFS_INODE_BLOCK_IDX(inode_bg, inode_shift);
     uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
 
     AUDIT(TRACE)

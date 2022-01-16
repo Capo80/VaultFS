@@ -116,7 +116,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     struct buffer_head *bh = NULL;
     uint32_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
     uint32_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
-    uint32_t inode_block = 4 + inode_bg * RANSOMFS_BLOCKS_PER_GROUP + inode_shift / RANSOMFS_INODES_PER_BLOCK;
+    uint32_t inode_block = RANSOMFS_INODE_BLOCK_IDX(inode_bg, inode_shift);
     uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
     int ret;
 
@@ -230,14 +230,13 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
 	return NULL;
 }
 
-//Allocates block_count new blocks in the closest group to close_block_idx
+//Allocates block_count new blocks in the closest group to close_group_idx
 // return group and block idx with error == 0 on success, on failure the group idx will contain the error code and error will be 1
-block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_block_idx, uint32_t block_count) {
+block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_group_idx, uint32_t block_count) {
 
     struct buffer_head* bh;
     uint32_t c, distance;
     uint32_t old_val;
-    uint32_t close_group_idx = close_block_idx / RANSOMFS_BLOCKS_PER_GROUP;
     struct ransomfs_sb_info* sbi = RANSOMFS_SB(sb);
     block_pos_t new_block_pos;
     unsigned long* data_bitmap;
@@ -279,7 +278,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_bloc
     } while (old_val < block_count);
 
     //load data bitmap from disk
-    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
+    bh = sb_bread(sb, RANSOMFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->data_bitmap_mutex);
 
@@ -327,7 +326,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     unsigned short curr_space;
     uint32_t ino;
     int ret = 0;
-    uint32_t parent_group_idx = dir->i_ino / RANSOMFS_INODES_PER_GROUP;
+    uint32_t parent_group_idx = RANSOMFS_GROUP_IDX(dir->i_ino);
     uint32_t phys_block_idx = 0, inode_table_idx = 0;
     block_pos_t new_block_pos;
     
@@ -365,11 +364,11 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     }
     
     //get actual phys block number
-    phys_block_idx = new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + RANSOMFS_INODES_GROUP_BLOCK_COUNT + 4 + new_block_pos.block_idx;
+    phys_block_idx = RANSOMFS_POS_TO_PHYS(new_block_pos.group_idx,new_block_pos.block_idx);
 
     //find free space for inode in table
     //we have a more space than needed for inodes, so if we did find a data block we will always find space for an inode
-    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
+    bh = sb_bread(sb, RANSOMFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
 
@@ -444,7 +443,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
 correct_bitmaps:
     //we failed correct the bitmaps    
-    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP + 1);
+    bh = sb_bread(sb, RANSOMFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
     bitmap_clear(inode_bitmap, inode_table_idx, 1);
@@ -452,7 +451,7 @@ correct_bitmaps:
     brelse(bh);
     mutex_unlock(&sbi->inode_bitmap_mutex);
     
-    bh = sb_bread(sb, 2 + new_block_pos.group_idx*RANSOMFS_BLOCKS_PER_GROUP);
+    bh = sb_bread(sb,  RANSOMFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->data_bitmap_mutex);
     bitmap_clear(data_bitmap, new_block_pos.block_idx, curr_space);
@@ -473,13 +472,71 @@ static int ransomfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
     return ransomfs_create(dir, dentry, mode | S_IFDIR, 0);
 }
 
+
+static int ransomfs_unlink(struct inode *dir, struct dentry *dentry)
+{
+	int ret;
+	struct inode *inode = d_inode(dentry);
+    struct super_block* sb = dir->i_sb;
+    struct ransomfs_inode_info *ci = RANSOMFS_INODE(dir);
+    struct ransomfs_inode_info *ci_file = RANSOMFS_INODE(inode);
+
+    AUDIT(TRACE)
+    printk(KERN_INFO "unlink called\n");
+
+    ret = remove_file_from_directory(sb, ci->extent_tree, inode->i_ino);
+    if (ret < 0) {
+        AUDIT(ERROR)
+        printk(KERN_INFO "Failed to remove file from directory\n");
+        return ret;
+    }
+    
+    dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
+	inode->i_ctime = dir->i_ctime;
+    
+    if (inode->i_nlink > 1) { //currently there no support for links so this check is pointless
+        inode_dec_link_count(inode);
+        return 0;
+    }
+
+    AUDIT(TRACE)
+    printk(KERN_INFO "No links left - deleting file\n");
+
+    ret = ransomfs_free_extent_blocks(sb, ci_file->extent_tree, 0); //free file data blocks
+    if (ret < 0) {
+        AUDIT(ERROR)
+        printk(KERN_INFO "Failed to delete file data blocks\n");
+        goto clean_inode; //just delete the inode anyway and lose the blocks forever
+    }
+
+    AUDIT(TRACE)
+    printk(KERN_INFO "inode unlink success\n");
+
+clean_inode:
+    /* Cleanup inode and mark dirty */
+    inode->i_blocks = 0;
+    inode->i_size = 0;
+    i_uid_write(inode, 0);
+    i_gid_write(inode, 0);
+    inode->i_mode = 0;
+    inode->i_ctime.tv_sec = inode->i_mtime.tv_sec = inode->i_atime.tv_sec = 0;
+    ci_file->i_committed = 0;
+    memset(ci_file->extent_tree, 0, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
+    drop_nlink(inode);
+    mark_inode_dirty(inode);
+
+	return ret;
+}
+
 const struct inode_operations ransomfs_dir_inode_ops = {
     .lookup = ransomfs_lookup,
     .create = ransomfs_create,
-    .mkdir = ransomfs_mkdir
+    .mkdir = ransomfs_mkdir,
+    //.rmdir = ransomfs_rmdir,
 };
 
 const struct inode_operations ransomdfs_file_inode_ops = {
     .lookup = ransomfs_lookup,
     .create = ransomfs_create,
+    //.unlink = ransomfs_unlink,
 };

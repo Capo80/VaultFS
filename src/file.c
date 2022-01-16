@@ -12,7 +12,7 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     uint32_t phys_block_no;
     struct super_block *sb = inode->i_sb;
     struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
-
+    uint32_t inode_bg = inode->i_ino / RANSOMFS_INODES_PER_GROUP;
     //TODO what is the max file size?
 
     AUDIT(TRACE)
@@ -26,7 +26,7 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
         if (!create)
             return 0;
 
-        phys_block_no = ransomfs_allocate_new_block(sb, ci->extent_tree, iblock, 0); //FIXME 0 here may be wrong
+        phys_block_no = ransomfs_allocate_new_block(sb, ci->extent_tree, iblock, inode_bg);
         if (phys_block_no < 0)
             return phys_block_no;
 
@@ -97,9 +97,11 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
 //update the inode metadata - truncate the file if necessary (yes, truncation can happen in this filesystem if it is in the same session)
 static int ransomfs_write_end(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int copied, struct page *page, void *fsdata) {
 
-    struct inode *inode = file->f_inode;  
-    uint32_t nr_blocks_before;
-    int ret;
+    struct inode *inode = file->f_inode;
+    struct super_block* sb = inode->i_sb;
+    struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
+    uint32_t nr_blocks_before, last_block;
+    int ret, ret2;
 
     //do the common filesystem stuff
     ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
@@ -120,8 +122,27 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     mark_inode_dirty(inode);
 
     if (nr_blocks_before > inode->i_blocks) {
+
         AUDIT(TRACE)
         printk(KERN_INFO "File is smaller - some blocks need to be freed");
+
+        last_block = get_last_logical_block_no(sb, ci->extent_tree);
+        if (last_block < 0) {
+            AUDIT(ERROR)
+            printk(KERN_ERR"Failed to find last block - lost forever\n");
+            return ret;
+        }
+
+        //free extra blocks
+        ret2 = ransomfs_free_extent_blocks(sb, ci->extent_tree, last_block - (nr_blocks_before - inode->i_blocks) + 1);
+        if (ret2 < 0) {
+            AUDIT(ERROR)
+            printk(KERN_ERR"Failed to free blocks - lost forever\n");
+            return ret;
+        }
+
+        AUDIT(TRACE)
+        printk(KERN_INFO "Block freed succeffuly");
     }
 
     AUDIT(TRACE)
@@ -137,7 +158,7 @@ static int ransomfs_file_open(struct inode *inode, struct file *filp) {
     AUDIT(TRACE)
     printk(KERN_INFO "open called\n");
 
-    //check if we can write
+    check if we can write
     if (inode != NULL && filp->f_mode & FMODE_WRITE) {
         rsi = RANSOMFS_INODE(inode);
         if (rsi->i_committed == 1) {

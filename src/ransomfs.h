@@ -29,7 +29,7 @@
 #define RANSOMFS_MAX_FOLDER_FILES				65536
 #define RANSOMFS_MAX_DEPTH						5
 
-#define RANSOMFS_INITIAL_FILE_SPACE				4 //number of blocks allocate to a file when we create it
+#define RANSOMFS_INITIAL_FILE_SPACE				1 //number of blocks we would like to allocate to a file when we create it
 
 #pragma pack(2)
 struct ransomfs_extent_header {
@@ -138,7 +138,7 @@ struct ransomfs_sb_info {
 
 /* dir.c */
 int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header *block_head, const unsigned char* filename, uint32_t ino, uint8_t file_type);
-
+int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_header *block_head, uint32_t ino);
 
 /* super.c */
 int ransomfs_fill_super(struct super_block *sb, void *data, int silent);
@@ -153,6 +153,8 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no, uint32_t first_node_len);
 uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
 uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_block);
+uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head);
+int ransomfs_free_extent_blocks(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t start);
 
 /* oprations */
 extern const struct file_operations ransomfs_dir_ops;
@@ -161,13 +163,25 @@ extern const struct inode_operations ransomfs_dir_inode_ops;
 extern const struct inode_operations ransomdfs_file_inode_ops;
 extern const struct address_space_operations ransomfs_aops;
 
-/* conversions */
-#define RANSOMFS_POS_TO_PHYS(g_idx, b_idx) \
-	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP + (g_idx+1)*(RANSOMFS_INODES_GROUP_BLOCK_COUNT + 2) + b_idx;
+/* conversions */	
 #define RANSOMFS_SB(sb) (sb->s_fs_info)
 #define RANSOMFS_INODE(inode) \
     (container_of(inode, struct ransomfs_inode_info, vfs_inode))
-
+#define RANSOMFS_GROUP_IDX(b_idx) \
+	(b_idx - 2) / RANSOMFS_BLOCKS_PER_GROUP
+#define RANSOMFS_DATA_BITMAP_BLOCK_IDX(g_idx) \
+	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP
+#define RANSOMFS_INODE_BITMAP_BLOCK_IDX(g_idx) \
+	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP + 1
+#define RANSOMFS_INODE_BLOCK_IDX(g_idx, i_idx) \
+	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP + 2 + i_idx / RANSOMFS_INODES_PER_BLOCK
+#define RANSOMFS_POS_TO_PHYS(g_idx, b_idx) \
+	2 + (g_idx)*RANSOMFS_BLOCKS_PER_GROUP + (RANSOMFS_INODES_GROUP_BLOCK_COUNT + 2) + b_idx;
+#define RANSOMFS_PHYS_TO_POS(phys_idx) \
+	(block_pos_t) {		\
+		.group_idx = RANSOMFS_GROUP_IDX(phys_idx),				\
+		.block_idx = ((phys_idx - 2) % RANSOMFS_BLOCKS_PER_GROUP) - (RANSOMFS_INODES_GROUP_BLOCK_COUNT + 2), \
+	}	
 #endif /* __KERNEL__ */
 
 #endif /* RANSOMFS_H */

@@ -39,37 +39,36 @@ int add_file_to_dir_record(struct super_block* sb, uint32_t block_no, const unsi
     //failure
     return 0;
 }
-
-//restrieves the next last logical block allocated from an extent tree
-uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head) {
+// removes a file from a dir record block
+// 1 on success, 0 if not found, negative on error
+int remove_file_from_dir_record(struct super_block* sb, uint32_t block_no, uint32_t ino) {
     
-    struct buffer_head* bh;
-    struct ransomfs_extent_idx* curr_node;
-    struct ransomfs_extent* last_leaf;
+    struct ransomfs_dir_record* dir_record;
+    int off = 0;
+    struct buffer_head* bh = sb_bread(sb, block_no);
+    if (!bh)
+        return -EIO;
 
-    while (block_head->depth != 0) {
-
-        //last node
-        curr_node = (struct ransomfs_extent_idx*) &block_head[block_head->entries];
-
-        bh = sb_bread(sb, curr_node->leaf_block);
-        block_head = (struct ransomfs_extent_header*) bh->b_data;
-
-        //check magic
-        if (block_head->magic != RANSOMFS_EXTENT_MAGIC) {
-            AUDIT(ERROR)
-            printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
+    dir_record = (struct ransomfs_dir_record*) bh->b_data;
+    //iterate over records of single block
+    while (off < RANSOMFS_BLOCK_SIZE) {
+        
+        //add file to folder
+        if (dir_record->ino == ino) {
+            dir_record->ino = 0; //this is enough, no need to waste time zeroing memory
+            mark_buffer_dirty(bh);
             brelse(bh);
-            return -ENOTRECOVERABLE;
+            //success
+            return 1;
         }
-
-        brelse(bh);
+        dir_record++;
+        off += sizeof(struct ransomfs_dir_record);
     }
 
-    last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
+    brelse(bh);
 
-    return last_leaf->file_block + last_leaf->len - 1;
-
+    //failure
+    return 0;
 }
 
 // recursive function to read and extent tree of a directory find some free space and  add a filename
@@ -163,7 +162,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     if (last_logic_no < 0) {
         return -ENOTRECOVERABLE;
     }
-    new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, 0);
+    new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, RANSOMFS_GROUP_IDX(last_logic_no));
 
     AUDIT(DEBUG)
     printk(KERN_INFO "new physical block is %d\n", new_block_no);
@@ -181,6 +180,86 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
         return -1;
 }
 
+//tries to remove a file from a directory
+// 0 if success, negative if failure
+int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t ino) {
+
+    int i = 0, j = 0, ret;
+    struct buffer_head *bh = NULL;
+
+    AUDIT(TRACE)
+    printk(KERN_INFO "Started the read of the extent tree for add file\n");
+
+    //tree has depth zero, other records point to data blocks, read them directly
+    if (block_head->depth == 0) {
+
+        struct ransomfs_extent* curr_leaf;
+
+        AUDIT(TRACE)
+        printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
+
+        //iterate over extent leafs
+        for (i = 0; i < block_head->entries; i++) {
+            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
+
+            AUDIT(TRACE)    
+            printk(KERN_INFO "Reading entry %d\n", i);
+            AUDIT(TRACE)
+            printk(KERN_INFO "Start data block: %x - len: %d\n", curr_leaf->data_block, curr_leaf->len);
+                
+            //iterate over data block of single extent
+            for (j = curr_leaf->data_block; j < curr_leaf->data_block + curr_leaf->len; j++) {     
+                
+                ret = remove_file_from_dir_record(sb, j, ino);
+                if (ret > 0) {
+                    AUDIT(TRACE)
+                    printk(KERN_INFO "Removed ino %d from dir\n", ino);
+                    return 0;
+                }
+           }
+        }
+
+    } else {
+
+        //tree has depth zero call this function again at lower levels
+        struct ransomfs_extent_idx* curr_node;
+        struct ransomfs_extent_header* new_block_head;
+        int ret;
+        
+        for (i = 0; i < block_head->entries; i++) {
+            
+            AUDIT(TRACE)
+            printk("Entering entry %d", i);
+            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+
+            bh = sb_bread(sb, curr_node->leaf_block);
+            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+
+            //check magic
+            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+                AUDIT(ERROR)
+                printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
+                return -ENOTRECOVERABLE;
+            }
+
+            //call again woth new block head
+            ret = remove_file_from_directory(sb, new_block_head, ino);
+
+            if (ret == 0) { 
+                //operation was successful, we can stop here   
+                brelse(bh);
+                return ret;
+            }
+
+            //operation failed try again with next node
+            brelse(bh);
+        }
+
+    }
+
+    return -ENOENT;
+
+}
 
 //recursive function to read and extent tree that keeps track of a direcotry data blocks
 // TODO need some concurrency checks here? probrably not considering files cannot be deleted
