@@ -377,11 +377,12 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
     
     // . and ..
     if (ctx->pos < 2) {
-        if (!dir_emit_dots(dir, ctx)) //FIXME: not working for root, why?
+        if (dir_emit_dots(dir, ctx)) //FIXME: not working for root, why?
 	        return 0;
     }
     //iterate over data blocks with extents
-    return read_dir_extent_tree(sb, ctx, ci->extent_tree);
+    read_dir_extent_tree(sb, ctx, ci->extent_tree);
+    return 0;
 }
 
 const struct file_operations ransomfs_dir_ops = {

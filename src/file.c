@@ -158,7 +158,7 @@ static int ransomfs_file_open(struct inode *inode, struct file *filp) {
     AUDIT(TRACE)
     printk(KERN_INFO "open called\n");
 
-    check if we can write
+    //check if we can write
     if (inode != NULL && filp->f_mode & FMODE_WRITE) {
         rsi = RANSOMFS_INODE(inode);
         if (rsi->i_committed == 1) {
