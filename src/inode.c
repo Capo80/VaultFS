@@ -176,7 +176,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     if (S_ISDIR(inode->i_mode)) {
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
-    } else if (S_ISREG(inode->i_mode)) {
+    } else if (S_ISREG(inode->i_mode) || S_ISMS(inode->i_mode) || S_ISFW(inode->i_mode)) {
         inode->i_op = &ransomdfs_file_inode_ops;
         inode->i_fop = &ransomfs_file_ops;
         inode->i_mapping->a_ops = &ransomfs_aops;
@@ -338,7 +338,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         return -ENAMETOOLONG;
 
     //check mode
-    if (!S_ISDIR(mode) && !S_ISREG(mode)) {
+    if (!S_ISDIR(mode) && !S_ISREG(mode) && !S_ISFW(mode) && !S_ISMS(mode)) {
         AUDIT(ERROR)
         printk(KERN_ERR "File type not supported");
         return -EINVAL;
@@ -399,6 +399,10 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     //initialize the inode
     inode_init_owner(inode, dir, mode);
+
+    AUDIT(WORK)
+    printk(KERN_INFO "mode: %x", mode);
+    
     new_info = RANSOMFS_INODE(inode);
     ransomfs_init_extent_tree(new_info, phys_block_idx, curr_space);
     new_info->i_committed = 0;
@@ -412,7 +416,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
         set_nlink(inode, 2); // . and ..
-    } else if (S_ISREG(mode)) {
+    } else if (S_ISREG(mode) || S_ISFW(mode) || S_ISMS(mode)) {
         AUDIT(TRACE)
         printk("Creating a regular file\n");
         inode->i_size = 0;
@@ -427,7 +431,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     
     //add to directory
     dir_info = RANSOMFS_INODE(dir);
-    if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
+    if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, (S_ISREG(mode) | S_ISFW(mode) | S_ISMS(mode)) + S_ISDIR(mode)*0x2) == 0) {
         dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);

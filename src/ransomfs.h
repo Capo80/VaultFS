@@ -31,6 +31,12 @@
 
 #define RANSOMFS_INITIAL_FILE_SPACE				1 //number of blocks we would like to allocate to a file when we create it
 
+
+// File flags
+#define S_IFMS 0110000     // multiple session file
+#define S_IFFW 0120000     // free write file
+
+
 #pragma pack(2)
 struct ransomfs_extent_header {
 	uint16_t magic;     //magic number of an extent struct
@@ -115,13 +121,16 @@ typedef struct block_pos {
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
 #include <linux/mutex.h>
+#include <linux/fs.h>
+
+#define S_ISMS(m)	(((m) & S_IFMT) == S_IFMS)
+#define S_ISFW(m)	(((m) & S_IFMT) == S_IFFW)
 
 struct ransomfs_inode_info {
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
 	uint16_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
 };
-
 
 //superblock in memory
 struct ransomfs_sb_info {

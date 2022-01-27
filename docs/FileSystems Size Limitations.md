@@ -8,4 +8,4 @@
 | Inodes Per Block Group |  32768 |
 | Group size |  ~128 Mb |
 | Blocks |  2^64 |
-| Inodes |  2^32 (maybe?) |
+| Inodes |  2^64 |

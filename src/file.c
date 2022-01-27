@@ -56,12 +56,23 @@ static int ransomfs_writepage(struct page *page, struct writeback_control *wbc) 
 //check if the write is possible - allocate blocks if necessary 
 static int ransomfs_write_begin(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int flags, struct page **pagep, void **fsdata) {
 
+    struct inode* inode = file->f_inode;
     struct ransomfs_sb_info *sbi = RANSOMFS_SB(file->f_inode->i_sb);
     uint32_t new_blocks_needed = 0;
     int err;
     
     AUDIT(TRACE)
-    printk(KERN_INFO "Write begin called\n");
+    printk(KERN_INFO "Write begin called, original size: %lld\n", inode->i_size);
+
+    AUDIT(WORK)
+    printk(KERN_INFO "mode: %x", inode->i_mode);
+
+    //check if we can overwrite data 
+    if (!S_ISFW(inode->i_mode) && inode->i_size > pos) {
+        AUDIT(ERROR)
+        printk(KERN_ERR "Invalid write position %lld > %lld\n", inode->i_size, pos);
+        return -EINVAL;
+    }
 
     //if (pos + len > RANSOMFS_MAX_FILESIZE)
     //    return -ENOSPC;
@@ -159,7 +170,7 @@ static int ransomfs_file_open(struct inode *inode, struct file *filp) {
     printk(KERN_INFO "open called\n");
 
     //check if we can write
-    if (inode != NULL && filp->f_mode & FMODE_WRITE) {
+    if (inode != NULL && !S_ISMS(inode->i_mode) && (filp->f_mode & FMODE_WRITE)) {
         rsi = RANSOMFS_INODE(inode);
         if (rsi->i_committed == 1) {
             //failed - already committed
