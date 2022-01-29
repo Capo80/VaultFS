@@ -4,6 +4,7 @@
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/bitmap.h>
+#include <linux/version.h>
 
 #include "ransomfs.h"
 
@@ -223,7 +224,11 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
     }
 
     //update dentry
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+    ktime_get_ts(&parent_inode->i_atime);
+#else
     parent_inode->i_atime = current_time(parent_inode);
+#endif
     mark_inode_dirty(parent_inode);
     d_add(child_dentry, inode);
 
@@ -406,7 +411,13 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     new_info = RANSOMFS_INODE(inode);
     ransomfs_init_extent_tree(new_info, phys_block_idx, curr_space);
     new_info->i_committed = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+    ktime_get_ts(&inode->i_ctime);
+    ktime_get_ts(&inode->i_atime);
+    ktime_get_ts(&inode->i_mtime);
+#else
     inode->i_ctime = inode->i_atime = inode->i_mtime = current_time(inode);
+#endif
     inode->i_blocks = 1;
     inode->i_ino = ino;
     if (S_ISDIR(mode)) {
@@ -432,7 +443,13 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //add to directory
     dir_info = RANSOMFS_INODE(dir);
     if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, (S_ISREG(mode) | S_ISFW(mode) | S_ISMS(mode)) + S_ISDIR(mode)*0x2) == 0) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+        ktime_get_ts(&dir->i_ctime);
+        ktime_get_ts(&dir->i_atime);
+        ktime_get_ts(&dir->i_mtime);
+#else
         dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
+#endif
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);
         d_instantiate(dentry, inode);
@@ -495,7 +512,13 @@ static int ransomfs_unlink(struct inode *dir, struct dentry *dentry)
         return ret;
     }
     
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+    ktime_get_ts(&dir->i_ctime);
+    ktime_get_ts(&dir->i_atime);
+    ktime_get_ts(&dir->i_mtime);
+#else
     dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
+#endif
 	inode->i_ctime = dir->i_ctime;
     
     if (inode->i_nlink > 1) { //currently there no support for links so this check is pointless

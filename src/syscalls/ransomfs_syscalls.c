@@ -26,7 +26,6 @@ inline void unprotect_memory(void)
     write_cr0_forced(cr0 & ~X86_CR0_WP);
 }
 
-
 static struct sdesc *init_sdesc(struct crypto_shash *alg)
 {
     struct sdesc *sdesc;
@@ -78,7 +77,11 @@ static int calc_hash_sha512(const unsigned char *data, unsigned int datalen,
 // ############ syscalls #########################
 
 //syscall to control the umount protection
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
 __SYSCALL_DEFINEx(2, _umount_ctl, umount_security_info_t* , info, int, command){
+#else
+asmlinkage long sys_umount_ctl(umount_security_info_t* info, int command){
+#endif
 
     struct ransomfs_security_info* cur;
     int ret = 0, lock_value;
@@ -139,6 +142,11 @@ exit:
     kfree(k_info);
     return ret;
 }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
+static unsigned long sys_umount_ctl = (unsigned long) __x64_umount_ctl;	
+#else
+#endif
+
 
 int insert_syscalls() {
 
@@ -154,7 +162,7 @@ int insert_syscalls() {
     //add new syscall
 	cr0 = read_cr0();
     unprotect_memory();
-    hacked_syscall_tbl[FIRST_NI_SYSCALL] = (unsigned long*) __x64_sys_umount_ctl;
+    hacked_syscall_tbl[FIRST_NI_SYSCALL] = (unsigned long*) sys_umount_ctl;
     protect_memory();
     
 	AUDIT(TRACE)

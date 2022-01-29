@@ -13,7 +13,12 @@ int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
 	struct ransomfs_security_info* info;
-    struct vfsmount* mount_point = (struct vfsmount*) regs_get_kernel_argument(regs, 0);
+    
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+	struct vfsmount* mount_point = (struct vfsmount*) regs_get_register(regs, offsetof(struct pt_regs, di)); //first argument
+#else
+	struct vfsmount* mount_point = (struct vfsmount*) regs_get_kernel_argument(regs, 0);
+#endif
 
 	char* buffer = kzalloc(4096, GFP_KERNEL);
 	char* path;
@@ -60,8 +65,13 @@ NOKPROBE_SYMBOL(umount_entry_handler);
 int umount_ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
-	if (!res->pass)
-        regs_set_return_value(regs, -EPERM);
+	if (!res->pass) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+		regs->ax = (unsigned long) -EPERM;
+#else
+		regs_set_return_value(regs, -EPERM);
+#endif
+	}
 	return 0;
 }
 NOKPROBE_SYMBOL(umount_ret_handler);
@@ -73,8 +83,12 @@ int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
 	struct ransomfs_security_info* info;
-	struct block_device* bdev;
-    struct file* file = (struct file*) regs_get_kernel_argument(regs, 0);
+	dev_t bdev;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+	struct file* file = (struct file*) regs_get_register(regs, offsetof(struct pt_regs, di)); //first argument
+#else
+	struct file* file = (struct file*)  regs_get_kernel_argument(regs, 0);
+#endif
 
     char* buffer = kzalloc(4096, GFP_KERNEL);
     char* path;
@@ -82,19 +96,18 @@ int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 
 	//pass by deafult
 	res->pass = 1;
-    return 0;
-	bdev = lookup_bdev(path);
+	bdev = name_to_dev_t(path);
 	kfree(buffer);
-	if (!IS_ERR(bdev)) {
+	if (bdev) {
 		AUDIT(TRACE)
-		printk(KERN_INFO "Detected device opening: (%d, %d)\n", MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));		
+		printk(KERN_INFO "Detected device opening: (%d, %d)\n", MAJOR(bdev), MINOR(bdev));		
 		
 		//check if device is protected
 		rcu_read_lock();
 		list_for_each_entry(info, &security_info_list, node) {
 			AUDIT(DEBUG)
-			printk(KERN_INFO "checking: %s (%d, %d)\n", info->mount_path, MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev));		
-			if (info->bdev_lock && info->bdev_id == bdev->bd_dev) {
+			printk(KERN_INFO "checking: %s (%d, %d)\n", info->mount_path, MAJOR(bdev), MINOR(bdev));		
+			if (info->bdev_lock && info->bdev_id == bdev) {
 				AUDIT(TRACE)
 				printk(KERN_INFO "Denied access on protected block_device\n");
 				//it is protected - fail
@@ -112,9 +125,13 @@ NOKPROBE_SYMBOL(open_entry_handler);
 int open_ret_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
-	if (!res->pass)
-        regs_set_return_value(regs, -EPERM);
-
+	if (!res->pass) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+		regs->ax = (unsigned long) -EPERM;
+#else
+		regs_set_return_value(regs, -EPERM);
+#endif
+	}
 	return 0;
 }
 NOKPROBE_SYMBOL(open_ret_handler);
@@ -123,7 +140,12 @@ NOKPROBE_SYMBOL(open_ret_handler);
 int sb_mount_entry_handler(struct kprobe *ri, struct pt_regs *regs)
 {	
 	struct mount_sb_info* info;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
+	struct path* new_mount = (struct path*) regs_get_register(regs, offsetof(struct pt_regs, si)); //second argument
+#else
 	struct path* new_mount = (struct path*) regs_get_kernel_argument(regs, 1);
+#endif
+
 	
     char* buffer = kzalloc(4096, GFP_KERNEL);
     char* path;

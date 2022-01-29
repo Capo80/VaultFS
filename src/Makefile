@@ -8,7 +8,7 @@ MKFS = mkfs.ransomfs
 IMAGE ?= test.img
 PASSWORD = 1234
 IMAGESIZE ?= 1000
-LDFLAGS = -lcrypto
+FLAGS = -lcrypto # do not use LDFLAGS as a name, kernel 4 will try to link that name with the kernel module too
 
 all: $(MKFS) $(IMAGE)
 	make -C $(KDIR) M=$(PWD) modules
@@ -17,7 +17,7 @@ module:
 	make -C $(KDIR) M=$(PWD) modules
 
 $(MKFS):  mkfs.c
-	$(CC) -std=gnu99 -Wall -o $@ $< $(LDFLAGS)
+	$(CC) -std=gnu99 -Wall -o $@ $< $(FLAGS)
 
 $(IMAGE): $(MKFS)
 	dd if=/dev/zero of=${IMAGE} bs=1M count=${IMAGESIZE}

@@ -3,6 +3,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/mpage.h>
+#include <linux/version.h>
 
 #include "ransomfs.h"
 
@@ -22,7 +23,7 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     if (phys_block_no == 0) {
         //block not allocated
         AUDIT(TRACE)
-        printk(KERN_INFO "Block %lld not allocated\n", iblock);
+        printk(KERN_INFO "Block %lu not allocated\n", iblock);
         if (!create)
             return 0;
 
@@ -129,7 +130,12 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
 
     //update metadata
     inode->i_blocks = inode->i_size / RANSOMFS_BLOCK_SIZE + 1;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+    ktime_get_ts(&inode->i_mtime);
+    ktime_get_ts(&inode->i_ctime);
+#else
     inode->i_mtime = inode->i_ctime = current_time(inode);
+#endif
     mark_inode_dirty(inode);
 
     if (nr_blocks_before > inode->i_blocks) {

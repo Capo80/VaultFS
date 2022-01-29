@@ -19,6 +19,8 @@ typedef struct umount_security_info {
 
 #include <linux/syscalls.h>
 #include <linux/crypto.h>
+#include <crypto/hash.h>
+#include <linux/version.h>
 #include "lib/vtpmo.h"
 
 #include "../ransomfs.h"

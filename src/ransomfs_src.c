@@ -21,7 +21,7 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
                               void *data)
 {
     struct dentry* dentry;
-    struct block_device* bdev;
+    dev_t bdev;
     struct mount_sb_info* cur;
     struct ransomfs_security_info* new_node;
     unsigned long irq_flags;
@@ -44,15 +44,15 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     
     //bdev
     new_node = kzalloc(sizeof(struct ransomfs_security_info), GFP_KERNEL);
-    bdev = lookup_bdev(dev_name);
-    if (IS_ERR(bdev)) {
+    bdev = name_to_dev_t(dev_name);
+    if (!bdev) {
         AUDIT(ERROR)
         printk(KERN_ERR "Cannot setup security for: %s\n", dev_name);
         return dentry;
     } else {
         AUDIT(DEBUG)
-        printk(KERN_INFO "FS block device is: (%d, %d) %s\n", MAJOR(bdev->bd_dev), MINOR(bdev->bd_dev), dev_name);
-        new_node->bdev_id = bdev->bd_dev;
+        printk(KERN_INFO "FS block device is: (%d, %d) %s\n", MAJOR(bdev), MINOR(bdev), dev_name);
+        new_node->bdev_id = bdev;
     }
 
     //password - maybe add a magic number to check for validity?
