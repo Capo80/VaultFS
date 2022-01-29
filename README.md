@@ -30,7 +30,9 @@ The major differences with the ext4 FileSystem are:
 
 ## Build
 
-This module has been written and tested on kernel 5.8, different kernel versions are not garanteed to work (and probably won't).
+This module should work on kernel 5 and 4, different kernel versions are not garanteed to work (and probably won't). It has been tested only on kernel 5.8 and 4.8 so the more likely inteval of working versions is \[4.8, 5.8\].
+
+The mkfs file does require the openssl ```libssl-dev``` to be compiled.
 
 ### The hard way
 

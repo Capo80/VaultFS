@@ -22,8 +22,6 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
     phys_block_no = ransomfs_extent_search_block(sb, ci->extent_tree, iblock);
     if (phys_block_no == 0) {
         //block not allocated
-        AUDIT(TRACE)
-        printk(KERN_INFO "Block %lu not allocated\n", iblock);
         if (!create)
             return 0;
 

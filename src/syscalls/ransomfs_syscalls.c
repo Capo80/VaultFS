@@ -143,7 +143,7 @@ exit:
     return ret;
 }
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,17,0)
-static unsigned long sys_umount_ctl = (unsigned long) __x64_umount_ctl;	
+static unsigned long sys_umount_ctl = (unsigned long) __x64_sys_umount_ctl;	
 #else
 #endif
 
