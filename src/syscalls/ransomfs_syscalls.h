@@ -14,7 +14,6 @@ typedef struct umount_security_info {
 
 #define umount_ctl(info, command) 	        syscall(134, info, command)
 
-//#define __KERNEL__ //FIXME have to do this or my IDE freaks out - remove before compiling
 #ifdef __KERNEL__  //prevent errors when including in user mode
 
 #include <linux/syscalls.h>

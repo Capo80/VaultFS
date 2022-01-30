@@ -97,10 +97,9 @@ int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 	//pass by deafult
 	res->pass = 1;
 	bdev = name_to_dev_t(path);
-	kfree(buffer);
 	if (bdev) {
 		AUDIT(TRACE)
-		printk(KERN_INFO "Detected device opening: (%d, %d)\n", MAJOR(bdev), MINOR(bdev));		
+		printk(KERN_INFO "Detected device opening: %s -> (%d, %d)\n", path, MAJOR(bdev), MINOR(bdev));		
 		
 		//check if device is protected
 		rcu_read_lock();
@@ -117,6 +116,8 @@ int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 		}
 		rcu_read_unlock();
 	}
+
+	kfree(buffer);
 	return 0;
 }
 NOKPROBE_SYMBOL(open_entry_handler);

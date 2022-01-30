@@ -34,7 +34,7 @@
 
 // File flags
 #define S_IFMS 0110000     // multiple session file
-#define S_IFFW 0120000     // free write file
+#define S_IFFW 0150000     // free write file
 
 
 #pragma pack(2)
@@ -138,6 +138,8 @@ struct ransomfs_sb_info {
 	struct ransomfs_superblock* sb;
 
 	struct ransomfs_group_desc* gdt; //cache the gdt
+
+	unsigned short file_prot_mode; //file protection that is currently used for new files (S_IFFW, S_IFMS or S_IFREG)
 
 	//mutex to sync modification
 	struct mutex inode_bitmap_mutex; //TODO theese 2 should be one per group

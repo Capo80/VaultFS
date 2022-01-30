@@ -16,6 +16,7 @@ extern DECLARE_HASHTABLE(path_sb_hash, 2); //the info here is really short lived
 struct ransomfs_security_info {
 
 	dev_t bdev_id;											//id of the block device
+	char bdev_path[PATH_MAX];								//path of the block device
 	char mount_path[PATH_MAX];								//mount point of the file system
 	char bdev_lock;											//lock flag for the bdev   (1 = locked, 0 = free)
 	char umount_lock;										//lock flag for the umount (1 = locked, 0 = free)

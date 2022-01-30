@@ -1,5 +1,5 @@
 obj-m += ransomfs.o
-ransomfs-objs := super.o inode.o file.o dir.o extent.o kprobes/ransomfs_kprobes.o syscalls/lib/usctm.o syscalls/lib/vtpmo.o syscalls/ransomfs_syscalls.o ransomfs_src.o 
+ransomfs-objs := super.o inode.o file.o dir.o extent.o kprobes/ransomfs_kprobes.o syscalls/lib/usctm.o syscalls/lib/vtpmo.o syscalls/ransomfs_syscalls.o ransomfs_src.o device/ransomfs_controller.o 
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 

@@ -402,12 +402,23 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     AUDIT(TRACE)
     printk(KERN_INFO "Got new inode with index %u\n", ino);
 
+    AUDIT(DEBUG)
+    printk(KERN_INFO "inode mode %x\n", mode);
+
+    //overwrite file type with the one in the superblock
+    mode = (mode & 07777);
+    
+    AUDIT(DEBUG)
+    printk(KERN_INFO "inode mode %x\n", mode);
+
+    mode |= sbi->file_prot_mode;
+
+    AUDIT(DEBUG)
+    printk(KERN_INFO "inode mode %x\n", mode);
+
     //initialize the inode
     inode_init_owner(inode, dir, mode);
 
-    AUDIT(WORK)
-    printk(KERN_INFO "mode: %x", mode);
-    
     new_info = RANSOMFS_INODE(inode);
     ransomfs_init_extent_tree(new_info, phys_block_idx, curr_space);
     new_info->i_committed = 0;

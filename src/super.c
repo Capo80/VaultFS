@@ -235,6 +235,9 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     mutex_init(&rbi->inode_bitmap_mutex);
     mutex_init(&rbi->data_bitmap_mutex);
 
+    //set regular protection level
+    rbi->file_prot_mode = 0 | S_IFREG;
+
     sb->s_fs_info = rbi;
 
     // set up root inode

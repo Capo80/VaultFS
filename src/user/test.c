@@ -22,16 +22,16 @@ void main() {
 
     int ret;
 
-    ret = mknod("/tmp/mnt/test5", S_IFFW, 0);
+    ret = mknod("/tmp/mnt/ms_test2", S_IFREG, 0);
     printf("%d\n", ret);
 
-    int fd = open("/tmp/mnt/test5", O_WRONLY);
+    int fd = open("/tmp/mnt/ms_test2", O_WRONLY);
 
     ret = write(fd, "testtest", 9);
     printf("%d\n", ret);
     ret = lseek(fd, 0, SEEK_SET);
     printf("%d\n", ret);
-    ret = write(fd, "test", 4);
+    ret = write(fd, "changed", 8);
     printf("%d\n", ret);
 
     close(fd);

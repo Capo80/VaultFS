@@ -7,6 +7,7 @@
 #include "ransomfs_security.h"
 #include "kprobes/ransomfs_kprobes.h"
 #include "syscalls/ransomfs_syscalls.h"
+#include "device/ransomfs_controller.h"
 
 // ################## file system ##############################
 
@@ -68,6 +69,8 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
         memcpy(new_node->mount_path, cur->mount_path, PATH_MAX);
         hash_del(&cur->node);
     }
+
+    memcpy(new_node->bdev_path, dev_name, PATH_MAX);
 
     //protections are active by default
     new_node->bdev_lock = 1;
@@ -137,18 +140,26 @@ static int __init ransomfs_init(void)
         }
     }
 
+    ret = register_controller();
+    if (ret < 0) {
+        AUDIT(ERROR)
+        printk(KERN_ERR "Unable to register controller\n");
+        goto unreg_kprobes;    
+    }
 
     ret = insert_syscalls();
     if (ret) {
         AUDIT(ERROR)
         printk(KERN_ERR "syscall hacking failed\n");
-        goto unreg_kprobes;
+        goto unreg_controller;
     }
 
     AUDIT(TRACE)
     printk(KERN_INFO "module loaded\n");
     return ret;
 
+unreg_controller:
+    unregister_controller();
 unreg_kprobes:    
     for (i = 0; i < KPROBES_COUNT; i++)
         unregister_kprobe(&ransomfs_kprobes[i]);
@@ -179,6 +190,8 @@ static void __exit ransomfs_exit(void)
     for (i = 0; i < KRETPROBES_COUNT; i++)
         unregister_kretprobe(&ransomfs_kretprobes[i]);
 	
+    unregister_controller();
+
     ret = remove_syscalls();
     if (ret < 0)
         AUDIT(ERROR)
