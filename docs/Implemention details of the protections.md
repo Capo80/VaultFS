@@ -5,21 +5,15 @@ This Module implements 3 protective measures that, when active, have the followi
 2. Umount protection, the filesystem should be detached only on system shutdown;
 3. Underlaying block device protection, the user should not be able to interact with the underlying block device after the system is mounted;
 
-Protection 2 can be activated/deactivated with syscalls by using a single unique, secure password.
+Protection 2 can be activated/deactivated with the device called controller by using a single unique, secure password.
 
 All protections are active by default at Filesystem Mounting. 
 
 ## Password persistance
 
-There are 2 possible solutions to maintain the password:
-- set up the password before mounting with a syscall and have it only in kernel memory;
-- keep the password on the filesystem and load it in memory up automatically when mounting; 
+The password that is used to umount is saved i nthe File System Superblock and is choosen during initial formatting.
 
-The first option would allow us to control the password more easily at runtime, while the second would allow us to have a persistent password and a more automatic loading process.
-
-In case of option 2, the best place to save the password would be the SuperBlock and to have the password be permanent while the FS is mounted.
-
-We extract the password from the superblock by using the data paramenter of the mount syscall in the "ransomfs_mount" function, it could also be possible to change the password at this point if the user passes it as a parameter.
+We extract the password from the superblock by using the data paramenter of the mount syscall in the "ransomfs_mount" function, it could also be possible to change the password at this point if the user passes it as a parameter, this is not yet implemented.
 
 ## Umount protection
 
@@ -41,8 +35,15 @@ To recognize the block device we should be able to use the Major/Minor number (i
 
 ## Write protection
 
-Done entirely in the FS code, in the implementation of the "open" operation, we keep additional information in the inode to check if it has already been written and deny the open in WRITE MODE if it is.
+There are 2 types of write protection:
+- Single session, the only session that is able to write on the file is the first one;
+- Append only, the writes on the file cannot overwrite exisitng data;
 
+A file of RansomFS must have at least one of the 2 and, by default, will have both. Files with different level of protection can coexist on the same instance of the file system.
+
+Single session is implemented in the the "open" operation, we keep additional information in the inode to check if it has already been written and deny the open in WRITE MODE if it is.
+
+Append only in the "write_begin" implementation, we just need to check that the write happens after the current end of the file.
 
 
 

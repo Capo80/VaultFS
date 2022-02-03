@@ -177,7 +177,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     if (S_ISDIR(inode->i_mode)) {
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
-    } else if (S_ISREG(inode->i_mode) || S_ISMS(inode->i_mode) || S_ISFW(inode->i_mode)) {
+    } else if (S_ISREG(inode->i_mode)) {
         inode->i_op = &ransomdfs_file_inode_ops;
         inode->i_fop = &ransomfs_file_ops;
         inode->i_mapping->a_ops = &ransomfs_aops;
@@ -343,7 +343,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         return -ENAMETOOLONG;
 
     //check mode
-    if (!S_ISDIR(mode) && !S_ISREG(mode) && !S_ISFW(mode) && !S_ISMS(mode)) {
+    if (!S_ISDIR(mode) && !S_ISREG(mode)) {
         AUDIT(ERROR)
         printk(KERN_ERR "File type not supported");
         return -EINVAL;
@@ -402,20 +402,6 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     AUDIT(TRACE)
     printk(KERN_INFO "Got new inode with index %u\n", ino);
 
-    AUDIT(DEBUG)
-    printk(KERN_INFO "inode mode %x\n", mode);
-
-    //overwrite file type with the one in the superblock
-    mode = (mode & 07777);
-    
-    AUDIT(DEBUG)
-    printk(KERN_INFO "inode mode %x\n", mode);
-
-    mode |= sbi->file_prot_mode;
-
-    AUDIT(DEBUG)
-    printk(KERN_INFO "inode mode %x\n", mode);
-
     //initialize the inode
     inode_init_owner(inode, dir, mode);
 
@@ -438,13 +424,14 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
         inode->i_op = &ransomfs_dir_inode_ops;
         inode->i_fop = &ransomfs_dir_ops;
         set_nlink(inode, 2); // . and ..
-    } else if (S_ISREG(mode) || S_ISFW(mode) || S_ISMS(mode)) {
+    } else if (S_ISREG(mode)) {
         AUDIT(TRACE)
         printk("Creating a regular file\n");
         inode->i_size = 0;
         inode->i_op = &ransomdfs_file_inode_ops;
         inode->i_fop = &ransomfs_file_ops;
         inode->i_mapping->a_ops = &ransomfs_aops;
+        new_info->i_prot_mode = sbi->file_prot_mode; // assign current protection level to file
         set_nlink(inode, 1);
     }
 
@@ -453,7 +440,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     
     //add to directory
     dir_info = RANSOMFS_INODE(dir);
-    if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, (S_ISREG(mode) | S_ISFW(mode) | S_ISMS(mode)) + S_ISDIR(mode)*0x2) == 0) {
+    if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
         ktime_get_ts(&dir->i_ctime);
         ktime_get_ts(&dir->i_atime);

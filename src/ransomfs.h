@@ -33,8 +33,9 @@
 
 
 // File flags
-#define S_IFMS 0110000     // multiple session file
-#define S_IFFW 0150000     // free write file
+#define P_RG 0x00		// regular file, single session, append only
+#define P_MS 0x01     	// multiple session file
+#define P_FW 0x02     	// free write file
 
 
 #pragma pack(2)
@@ -67,8 +68,9 @@ struct ransomfs_inode {
     uint16_t i_mode;   			// File mode 
     uint16_t i_uid;    			// Owner id 
     uint16_t i_gid;    			// Group id 
-	uint16_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
-    uint32_t i_size;   			// Size in bytes 
+	uint8_t  i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
+    uint8_t  i_prot_mode;		// protection mode of the file P_RG, P_MS or P_FW
+	uint32_t i_size;   			// Size in bytes 
     uint32_t i_ctime;  			// Inode change time 
     uint32_t i_atime;  			// Access time 
     uint32_t i_mtime;  			// Modification time 
@@ -101,7 +103,7 @@ struct ransomfs_superblock {
 	uint32_t magic;
 
 	uint32_t inodes_count; /* Total inode count */
-	uint32_t blocks_count; /* Total block ocunt */
+	uint32_t blocks_count; /* Total block count */
 
 	uint32_t free_inodes_count;
 	uint32_t free_blocks_count;
@@ -123,13 +125,11 @@ typedef struct block_pos {
 #include <linux/mutex.h>
 #include <linux/fs.h>
 
-#define S_ISMS(m)	(((m) & S_IFMT) == S_IFMS)
-#define S_ISFW(m)	(((m) & S_IFMT) == S_IFFW)
-
 struct ransomfs_inode_info {
 	struct ransomfs_extent_header extent_tree[RANSOMFS_EXTENT_PER_INODE]; //start of the extent tree
     struct inode vfs_inode;
-	uint16_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
+	uint8_t i_committed;   	// 0 if still writable, 1 if not (only need 1 bit but we have space to spare) 
+	uint8_t i_prot_mode;   	// protection mode of the file P_RG, P_MS or P_FW 
 };
 
 //superblock in memory
@@ -139,7 +139,7 @@ struct ransomfs_sb_info {
 
 	struct ransomfs_group_desc* gdt; //cache the gdt
 
-	unsigned short file_prot_mode; //file protection that is currently used for new files (S_IFFW, S_IFMS or S_IFREG)
+	uint8_t file_prot_mode; //file protection that is currently used for new files (S_IFFW, S_IFMS or S_IFREG)
 
 	//mutex to sync modification
 	struct mutex inode_bitmap_mutex; //TODO theese 2 should be one per group

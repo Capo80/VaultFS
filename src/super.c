@@ -81,6 +81,7 @@ static int ransomfs_write_inode(struct inode *inode,
     disk_inode->i_uid = i_uid_read(inode);
     disk_inode->i_gid = i_gid_read(inode);
     disk_inode->i_committed = ci->i_committed;
+    disk_inode->i_prot_mode = ci->i_prot_mode;
     disk_inode->i_size = inode->i_size;
     disk_inode->i_ctime = inode->i_ctime.tv_sec;
     disk_inode->i_atime = inode->i_atime.tv_sec;
@@ -236,7 +237,7 @@ int ransomfs_fill_super(struct super_block *sb, void *data, int silent)
     mutex_init(&rbi->data_bitmap_mutex);
 
     //set regular protection level
-    rbi->file_prot_mode = 0 | S_IFREG;
+    rbi->file_prot_mode = P_RG;
 
     sb->s_fs_info = rbi;
 

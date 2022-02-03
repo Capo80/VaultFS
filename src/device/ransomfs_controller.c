@@ -51,14 +51,14 @@ int parse_command(char* command) {
     return -1;
 }
 
-int parse_protection(char* protection) {
+uint8_t parse_protection(char* protection) {
 
-    if (strcmp(protection, "S_IFREG") == 0)
-        return S_IFREG;
-    else if (strcmp(protection, "S_IFFW") == 0)
-        return S_IFFW;
-    else if (strcmp(protection, "S_IFMS") == 0)    
-        return S_IFMS;
+    if (strcmp(protection, "P_RG") == 0)
+        return P_RG;
+    else if (strcmp(protection, "P_MS") == 0)
+        return P_MS;
+    else if (strcmp(protection, "P_FW") == 0)    
+        return P_FW;
     else
         return -1;
 
@@ -259,7 +259,7 @@ exit:
 // ############################### ######device operations ##########################
 
 //TODO change this with a log with the result of user commands
-ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
+ssize_t controller_read(struct file *filp, char *buff, size_t len, loff_t *off) {
 
     #define SIZE 6
     char message[SIZE] = "hello";
@@ -281,7 +281,7 @@ ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
 
 }
 
-ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
+ssize_t controller_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
     char* command_string, *mount_point, *password, *protection;
     int command_number;
@@ -338,8 +338,8 @@ ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) 
 //device fops
 struct file_operations fops = {
   .owner = THIS_MODULE,
-  //.read = dev_read, TOD implement a log for the result of the commands
-  .write = dev_write,
+  .read = controller_read, //TODO implement a log for the result of the commands
+  .write = controller_write,
 };
 
 
