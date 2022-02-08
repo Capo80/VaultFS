@@ -8,6 +8,7 @@
 #include <linux/kprobes.h>
 #include <linux/slab.h>
 #include <linux/dcache.h>
+#include <linux/sched.h>
 #include <linux/version.h>
 
 #include "../ransomfs.h"

@@ -30,6 +30,13 @@ int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 	//pass by deafult
 	res->pass = 1;
 
+	AUDIT(DEBUG)
+	printk(KERN_INFO "umount called: %s - %d - %d - %d \n", path, current->tgid, current->parent->tgid, current->real_parent->tgid);
+
+	//let systemd/init umount
+	if (current->tgid == 1 || current->parent->tgid == 1)
+		return 0;
+
 	//check if path is protected
 	rcu_read_lock();
 	list_for_each_entry(info, &security_info_list, node) {
