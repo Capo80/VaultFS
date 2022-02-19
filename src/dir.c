@@ -154,7 +154,8 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     printk(KERN_INFO "Extent full for directory - expanding\n");
     //failed - we have no more space in this extent - allocate a new block and add the file there
     //find the new logical block number
-    last_logic_no = get_last_logical_block_no(sb, block_head);
+    uint32_t last_phys_no;
+    last_logic_no = get_last_logical_block_no(sb, block_head, &last_phys_no);
     
     AUDIT(DEBUG)
     printk(KERN_INFO "Last logical block is %d\n", last_logic_no);
@@ -162,7 +163,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     if (last_logic_no < 0) {
         return -ENOTRECOVERABLE;
     }
-    new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, RANSOMFS_GROUP_IDX(last_logic_no));
+    new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, RANSOMFS_GROUP_IDX(last_phys_no));
 
     AUDIT(DEBUG)
     printk(KERN_INFO "new physical block is %d\n", new_block_no);
@@ -308,7 +309,8 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
                         if (file_counter >= ctx->pos-2) {
                             if (!dir_emit(ctx, curr_record->filename, RANSOMFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
                                 brelse(bh);
-                                return file_counter; //no more space
+                                printk(KERN_INFO "No more space, returning %d\n", file_counter+2);
+                                return file_counter+2; //no more space
                             }
                             ctx->pos++;
                         }

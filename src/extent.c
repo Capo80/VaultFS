@@ -100,7 +100,8 @@ uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_ex
 }
 
 //restrieves the next last logical block allocated from an extent tree
-uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head) {
+//also retriesves the last phys if the pointer is not NULL
+uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head, uint32_t* last_phys_block) {
     
     struct buffer_head* bh;
     struct ransomfs_extent_idx* curr_node;
@@ -127,6 +128,8 @@ uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_exten
 
     last_leaf = (struct ransomfs_extent*) &block_head[block_head->entries];
 
+    if (last_phys_block != NULL)
+        *last_phys_block = last_leaf->data_block + last_leaf->len - 1;
     return last_leaf->file_block + last_leaf->len - 1;
 
 }

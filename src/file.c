@@ -142,7 +142,7 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
         AUDIT(TRACE)
         printk(KERN_INFO "File is smaller - some blocks need to be freed");
 
-        last_block = get_last_logical_block_no(sb, ci->extent_tree);
+        last_block = get_last_logical_block_no(sb, ci->extent_tree, NULL);
         if (last_block < 0) {
             AUDIT(ERROR)
             printk(KERN_ERR"Failed to find last block - lost forever\n");

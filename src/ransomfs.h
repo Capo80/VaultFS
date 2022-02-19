@@ -164,7 +164,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
 void ransomfs_init_extent_tree(struct ransomfs_inode_info* inode, uint32_t first_block_no, uint32_t first_node_len);
 uint32_t ransomfs_extent_search_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no);
 uint32_t ransomfs_allocate_new_block(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t logical_block_no, uint32_t initial_block);
-uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head);
+uint32_t get_last_logical_block_no(struct super_block* sb, struct ransomfs_extent_header *block_head, uint32_t* last_phys_block);
 int ransomfs_free_extent_blocks(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t start);
 
 /* oprations */

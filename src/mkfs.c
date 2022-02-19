@@ -17,6 +17,26 @@ struct superblock {
     char padding[RANSOMFS_BLOCK_SIZE - sizeof(struct ransomfs_superblock)]; /* Padding to match block size */
 };
 
+void zero_device(int fd, struct stat *fstats) {
+
+    static const char zeros[4096];
+    off_t size = fstats->st_size;
+    lseek(fd, 0, SEEK_SET);
+    int curr_blocks = 0, c = 0;
+    int total_blocks = fstats->st_size/sizeof(zeros);
+    while (size > sizeof(zeros)) {
+        size -= write(fd, zeros, sizeof zeros);
+        curr_blocks += 1;
+        if (curr_blocks > c*(total_blocks/100)) {
+            printf("Zeroing device... (%d%%)\n", c);
+            c++;
+        }
+
+    }
+    lseek(fd, 0, SEEK_SET);
+    
+}
+
 static struct superblock *write_superblock(int fd, struct stat *fstats, unsigned char* password)
 {
     struct superblock *sb = malloc(sizeof(struct superblock));
@@ -190,6 +210,10 @@ int main(int argc, char **argv) {
         ret = EXIT_FAILURE;
         goto fclose;
     }
+
+    //zeri device
+    zero_device(fd, &stat_buf);
+    printf("Device zeroed\n");
 
     /* Write superblock (block 0) */
     struct superblock *sb = write_superblock(fd, &stat_buf, (unsigned char*) argv[2]);
