@@ -1,9 +1,9 @@
-#include "ransomfs_kprobes.h"
+#include "vaultfs_kprobes.h"
 
 // ##################### umount protection ###############################
 
 static void sucurity_info_reclaim_callback(struct rcu_head *rcu) {
-	struct ransomfs_security_info *info = container_of(rcu, struct ransomfs_security_info, rcu);
+	struct vaultfs_security_info *info = container_of(rcu, struct vaultfs_security_info, rcu);
 	if (info != NULL)	
 		kfree(info);
 }
@@ -12,7 +12,7 @@ static void sucurity_info_reclaim_callback(struct rcu_head *rcu) {
 int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
-	struct ransomfs_security_info* info;
+	struct vaultfs_security_info* info;
     
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
 	struct vfsmount* mount_point = (struct vfsmount*) regs_get_register(regs, offsetof(struct pt_regs, di)); //first argument
@@ -89,7 +89,7 @@ NOKPROBE_SYMBOL(umount_ret_handler);
 int open_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs)
 {
 	struct check_result *res = (struct check_result *)ri->data;
-	struct ransomfs_security_info* info;
+	struct vaultfs_security_info* info;
 	dev_t bdev;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,20,0)
 	struct file* file = (struct file*) regs_get_register(regs, offsetof(struct pt_regs, di)); //first argument
@@ -171,7 +171,7 @@ int sb_mount_entry_handler(struct kprobe *ri, struct pt_regs *regs)
 }
 NOKPROBE_SYMBOL(sb_mount_entry_handler);
 
-struct kretprobe ransomfs_kretprobes[] = {
+struct kretprobe vaultfs_kretprobes[] = {
 	{
 		//umount control
 		.handler		= umount_ret_handler,
@@ -196,7 +196,7 @@ struct kretprobe ransomfs_kretprobes[] = {
 	},
 };
 
-struct kprobe ransomfs_kprobes[] = {
+struct kprobe vaultfs_kprobes[] = {
 	{
 		//check mount of secure filesystem
 		.pre_handler	= sb_mount_entry_handler,

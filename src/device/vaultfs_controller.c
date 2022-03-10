@@ -1,4 +1,4 @@
-#include "ransomfs_controller.h"
+#include "vaultfs_controller.h"
 
 //constants
 #define MAX_COMMAND_SIZE        17
@@ -116,9 +116,9 @@ static int calc_hash_sha512(const unsigned char *data, unsigned int datalen,
 
 int change_umount_lock(char* mount_point,  char* password, int command) {
 
-    struct ransomfs_security_info* cur;
+    struct vaultfs_security_info* cur;
     int ret = 0, lock_value;
-    unsigned char* digest = kzalloc(RANSOMFS_PASSWORD_SIZE, GFP_KERNEL);
+    unsigned char* digest = kzalloc(VAULTFS_PASSWORD_SIZE, GFP_KERNEL);
 
     //compute sha of password
     if(calc_hash_sha512(password, strlen(password), digest) < 0) {
@@ -151,7 +151,7 @@ int change_umount_lock(char* mount_point,  char* password, int command) {
     //TODO - do i need to do some locking here? i think not
     list_for_each_entry(cur, &security_info_list, node) {
         if (strcmp(cur->mount_path, mount_point) == 0) {
-            if (memcmp(cur->password_hash, digest, RANSOMFS_PASSWORD_SIZE) == 0) {
+            if (memcmp(cur->password_hash, digest, VAULTFS_PASSWORD_SIZE) == 0) {
                 AUDIT(TRACE)
                 printk(KERN_INFO "Password is correct, umount lock changed to %d\n", lock_value);
                 cur->umount_lock = lock_value;
@@ -174,14 +174,14 @@ exit:
 
 int change_file_protection(char* mount_point, char* password, char* new_protection) {
 
-    struct ransomfs_security_info* cur;
+    struct vaultfs_security_info* cur;
     char* bdev_path;
     struct block_device* bdev;
     struct super_block* sb;
-    struct ransomfs_sb_info* sb_info;
+    struct vaultfs_sb_info* sb_info;
     unsigned short new_prot_level;
     int ret = 0;
-    unsigned char* digest = kzalloc(RANSOMFS_PASSWORD_SIZE, GFP_KERNEL);
+    unsigned char* digest = kzalloc(VAULTFS_PASSWORD_SIZE, GFP_KERNEL);
 
     //check if protection is valid
     new_prot_level = parse_protection(new_protection);
@@ -206,7 +206,7 @@ int change_file_protection(char* mount_point, char* password, char* new_protecti
     //go throgh list to check password and get block device
     list_for_each_entry(cur, &security_info_list, node) {
         if (strcmp(cur->mount_path, mount_point) == 0) {
-            if (memcmp(cur->password_hash, digest, RANSOMFS_PASSWORD_SIZE) == 0) {
+            if (memcmp(cur->password_hash, digest, VAULTFS_PASSWORD_SIZE) == 0) {
                 bdev_path = cur->bdev_path;
                 AUDIT(TRACE)
                 printk(KERN_INFO "Password is correct, bdev path is %s\n", bdev_path);
@@ -227,7 +227,7 @@ int change_file_protection(char* mount_point, char* password, char* new_protecti
         sb = get_super(bdev);
         if (sb != NULL) {
 
-            sb_info = RANSOMFS_SB(sb);
+            sb_info = VAULTFS_SB(sb);
             //change protection
             sb_info->file_prot_mode = new_prot_level;
             drop_super(sb);

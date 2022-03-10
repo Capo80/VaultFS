@@ -1,8 +1,8 @@
-# RansomFS
+# VaultFS
 A simplified version of the ext4 FileSystem with added security features. This FileSystem is designed for back-ups of highly sensible data and is intended as a defensive measure against Ransomware attacks.
 
 The security features that i plan to implement are:
-- Write protection on file, files should only be written once and never modified;
+- Write protection on file, there are limitations on how you can write on a file;
 - Umount protection, the filesystem should be detached only on system shutdown;
 - Underlaying block device protection, the user should not be able to interact with the underlying block device after the system is mounted;
 
@@ -12,7 +12,7 @@ Details on the implementation are in the [implementation details file](docs/Impl
 
 The disk layout is based on the ext4 FileSystem, the disk is divided in groups and each group has the following organization: 
 
-| rfs superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
+| vfs superblock <br/> (only in group 0) | Group descriptor table <br/> (only in group 0) | Data Block bitmap | Inode Bitamp | Inode Table | Data Blocks |
 |:-:|:-:|:-:|:-:|:-:|:-:|
 | 1 block | 1 block | 1 block | 1 block | 1024 blocks | 317421 Blocks |
 
@@ -32,21 +32,21 @@ The major differences with the ext4 FileSystem are:
 
 This module should work on kernel 5 and 4, different kernel versions are not garanteed to work (and probably won't). It has been tested only on kernel 5.8 and 4.8 so the more likely inteval of working versions is \[4.8, 5.8\].
 
-The mkfs file does require the openssl ```libssl-dev``` to be compiled.
+The mkfs file does requires the openssl ```libssl-dev``` package to be compiled.
 
 ### The hard way
 
 Enter the src folder and run: ```make```
 
-The MakeFile will create a RansomFS formatted test image in the current folder name ```test.img```
+The MakeFile will create a VaultFS formatted test image in the current folder name ```test.img```
 
 Default size for the test image is 1GB, to change it edit the "IMAGESIZE" variable in the Makefile.
 
 After this we can insert the module and mount the filesystem with the file on a virtual block device with:
 
 ```
-insmod ransomfs.ko
-mount -o loop -t ransomfs test.img <directory>
+insmod vaultfs.ko
+mount -o loop -t vaultfs test.img <directory>
 ```
 
 The File System will be mounted with the defult password ```1234```, to umount we need to call the "umount_ctl" syscall with this password, so run:
@@ -110,3 +110,4 @@ To run all tests make sure you in the test folder and run:
 |:heavy_check_mark:| Implement concurrency management on the cached gdt | 1/5 |
 |:heavy_check_mark:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |
 |:heavy_check_mark:| The search for blocks in the allocation needs to be improved in term of closeness to the other blocks | 4/5 |
+|:x:| Current makefs is zeroing the whole device, this should not be the default, only an option beacuse its really slow | 2/5 |

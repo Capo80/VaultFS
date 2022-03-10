@@ -5,27 +5,27 @@
 #include <linux/mpage.h>
 #include <linux/version.h>
 
-#include "ransomfs.h"
+#include "vaultfs.h"
 
 //map buffer head to i-block of a file, allocate a new one only if create is true
-static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh_result, int create) {
+static int vaultfs_file_get_block(struct inode *inode, sector_t iblock, struct buffer_head *bh_result, int create) {
 
     uint32_t phys_block_no;
     struct super_block *sb = inode->i_sb;
-    struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
-    uint32_t inode_bg = inode->i_ino / RANSOMFS_INODES_PER_GROUP;
+    struct vaultfs_inode_info *ci = VAULTFS_INODE(inode);
+    uint32_t inode_bg = inode->i_ino / VAULTFS_INODES_PER_GROUP;
     //TODO what is the max file size?
 
     AUDIT(TRACE)
     printk(KERN_INFO "Mapping requested\n");
 
-    phys_block_no = ransomfs_extent_search_block(sb, ci->extent_tree, iblock);
+    phys_block_no = vaultfs_extent_search_block(sb, ci->extent_tree, iblock);
     if (phys_block_no == 0) {
         //block not allocated
         if (!create)
             return 0;
 
-        phys_block_no = ransomfs_allocate_new_block(sb, ci->extent_tree, iblock, inode_bg);
+        phys_block_no = vaultfs_allocate_new_block(sb, ci->extent_tree, iblock, inode_bg);
         if (phys_block_no < 0)
             return phys_block_no;
 
@@ -44,20 +44,20 @@ static int ransomfs_file_get_block(struct inode *inode, sector_t iblock, struct 
 }
 
 //called by the cache to write and read pages to memory
-static int ransomfs_readpage(struct file *file, struct page *page) {
-    return mpage_readpage(page, ransomfs_file_get_block);
+static int vaultfs_readpage(struct file *file, struct page *page) {
+    return mpage_readpage(page, vaultfs_file_get_block);
 }
-static int ransomfs_writepage(struct page *page, struct writeback_control *wbc) {
-    return block_write_full_page(page, ransomfs_file_get_block, wbc);
+static int vaultfs_writepage(struct page *page, struct writeback_control *wbc) {
+    return block_write_full_page(page, vaultfs_file_get_block, wbc);
 }
 
 //called before on th ewrite syscall
 //check if the write is possible - allocate blocks if necessary 
-static int ransomfs_write_begin(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int flags, struct page **pagep, void **fsdata) {
+static int vaultfs_write_begin(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int flags, struct page **pagep, void **fsdata) {
 
     struct inode* inode = file->f_inode;
-    struct ransomfs_inode_info* rsi = RANSOMFS_INODE(inode);
-    struct ransomfs_sb_info *sbi = RANSOMFS_SB(file->f_inode->i_sb);
+    struct vaultfs_inode_info* rsi = VAULTFS_INODE(inode);
+    struct vaultfs_sb_info *sbi = VAULTFS_SB(file->f_inode->i_sb);
     uint32_t new_blocks_needed = 0;
     int err;
     
@@ -74,11 +74,11 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
         return -EINVAL;
     }
 
-    //if (pos + len > RANSOMFS_MAX_FILESIZE)
+    //if (pos + len > VAULTFS_MAX_FILESIZE)
     //    return -ENOSPC;
     
     //check we have enough block left on the disk
-    new_blocks_needed = ((pos + len) / RANSOMFS_BLOCK_SIZE) + 1;
+    new_blocks_needed = ((pos + len) / VAULTFS_BLOCK_SIZE) + 1;
     if (new_blocks_needed > file->f_inode->i_blocks)
         new_blocks_needed -= file->f_inode->i_blocks;
     else
@@ -91,7 +91,7 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
     printk(KERN_INFO "Checks passed %llu - %d\n", pos, len);
 
     //allocate the blocks needed
-    err = block_write_begin(mapping, pos, len, flags, pagep, ransomfs_file_get_block);
+    err = block_write_begin(mapping, pos, len, flags, pagep, vaultfs_file_get_block);
     if (err < 0) {
         //TODO blocks deallocation
         AUDIT(TRACE)
@@ -106,11 +106,11 @@ static int ransomfs_write_begin(struct file *file, struct address_space *mapping
 
 //called when the write is finished
 //update the inode metadata - truncate the file if necessary (yes, truncation can happen in this filesystem if it is in the same session)
-static int ransomfs_write_end(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int copied, struct page *page, void *fsdata) {
+static int vaultfs_write_end(struct file *file, struct address_space *mapping, loff_t pos, unsigned int len, unsigned int copied, struct page *page, void *fsdata) {
 
     struct inode *inode = file->f_inode;
     struct super_block* sb = inode->i_sb;
-    struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
+    struct vaultfs_inode_info *ci = VAULTFS_INODE(inode);
     uint32_t nr_blocks_before, last_block;
     int ret, ret2;
 
@@ -128,7 +128,7 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     nr_blocks_before = inode->i_blocks;
 
     //update metadata
-    inode->i_blocks = inode->i_size / RANSOMFS_BLOCK_SIZE + 1;
+    inode->i_blocks = inode->i_size / VAULTFS_BLOCK_SIZE + 1;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
     ktime_get_ts(&inode->i_mtime);
     ktime_get_ts(&inode->i_ctime);
@@ -150,7 +150,7 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
         }
 
         //free extra blocks
-        ret2 = ransomfs_free_extent_blocks(sb, ci->extent_tree, last_block - (nr_blocks_before - inode->i_blocks) + 1);
+        ret2 = vaultfs_free_extent_blocks(sb, ci->extent_tree, last_block - (nr_blocks_before - inode->i_blocks) + 1);
         if (ret2 < 0) {
             AUDIT(ERROR)
             printk(KERN_ERR"Failed to free blocks - lost forever\n");
@@ -167,9 +167,9 @@ static int ransomfs_write_end(struct file *file, struct address_space *mapping, 
     return ret;
 }
 
-static int ransomfs_file_open(struct inode *inode, struct file *filp) {
+static int vaultfs_file_open(struct inode *inode, struct file *filp) {
 
-    struct ransomfs_inode_info *rsi = RANSOMFS_INODE(inode);
+    struct vaultfs_inode_info *rsi = VAULTFS_INODE(inode);
     
     AUDIT(TRACE)
     printk(KERN_INFO "open called\n");
@@ -191,26 +191,26 @@ static int ransomfs_file_open(struct inode *inode, struct file *filp) {
     return generic_file_open(inode, filp);
 }
 
-static sector_t ransomfs_bmap(struct address_space *mapping, sector_t block)
+static sector_t vaultfs_bmap(struct address_space *mapping, sector_t block)
 {
-	return generic_block_bmap(mapping, block, ransomfs_file_get_block);
+	return generic_block_bmap(mapping, block, vaultfs_file_get_block);
 }
 
 
-const struct address_space_operations ransomfs_aops = {
+const struct address_space_operations vaultfs_aops = {
 	.set_page_dirty	= __set_page_dirty_buffers,
-    .readpage = ransomfs_readpage,
-    .writepage = ransomfs_writepage,
-    .write_begin = ransomfs_write_begin,
-    .write_end = ransomfs_write_end,
-    .bmap = ransomfs_bmap
+    .readpage = vaultfs_readpage,
+    .writepage = vaultfs_writepage,
+    .write_begin = vaultfs_write_begin,
+    .write_end = vaultfs_write_end,
+    .bmap = vaultfs_bmap
 };
 
-const struct file_operations ransomfs_file_ops = {
+const struct file_operations vaultfs_file_ops = {
     .llseek = generic_file_llseek,
     .owner = THIS_MODULE,
     .read_iter = generic_file_read_iter,
-    .open = ransomfs_file_open,
+    .open = vaultfs_file_open,
     .write_iter = generic_file_write_iter,
     .fsync = generic_file_fsync,
     .mmap = generic_file_mmap,

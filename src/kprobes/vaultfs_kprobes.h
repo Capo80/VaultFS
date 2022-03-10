@@ -1,5 +1,5 @@
-#ifndef RANSOMFS_KPROBES_H
-#define RANSOMFS_KPROBES_H
+#ifndef vaultfs_KPROBES_H
+#define vaultfs_KPROBES_H
 
 #include <linux/fs.h>
 #include <linux/kernel.h>
@@ -11,8 +11,8 @@
 #include <linux/sched.h>
 #include <linux/version.h>
 
-#include "../ransomfs.h"
-#include "../ransomfs_security.h"
+#include "../vaultfs.h"
+#include "../vaultfs_security.h"
 
 #define PATH_MAX 4096
 
@@ -39,7 +39,7 @@ int umount_entry_handler(struct kretprobe_instance *ri, struct pt_regs *regs);
 #define KPROBES_COUNT 		1
 #define KRETPROBES_COUNT 	2
 
-extern struct kretprobe ransomfs_kretprobes[];
-extern struct kprobe ransomfs_kprobes[];
+extern struct kretprobe vaultfs_kretprobes[];
+extern struct kprobe vaultfs_kprobes[];
 
 #endif

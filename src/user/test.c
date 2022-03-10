@@ -16,7 +16,7 @@
 #include <unistd.h>
 #include <openssl/sha.h>
 
-#include "../ransomfs.h"
+#include "../vaultfs.h"
 
 void main() {
 

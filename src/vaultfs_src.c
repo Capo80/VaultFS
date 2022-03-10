@@ -3,11 +3,11 @@
 #include <linux/module.h>
 #include <linux/kprobes.h>
 
-#include "ransomfs.h"
-#include "ransomfs_security.h"
-#include "kprobes/ransomfs_kprobes.h"
-#include "syscalls/ransomfs_syscalls.h"
-#include "device/ransomfs_controller.h"
+#include "vaultfs.h"
+#include "vaultfs_security.h"
+#include "kprobes/vaultfs_kprobes.h"
+#include "syscalls/vaultfs_syscalls.h"
+#include "device/vaultfs_controller.h"
 
 // ################## file system ##############################
 
@@ -15,8 +15,8 @@ spinlock_t info_list_spinlock;
 LIST_HEAD(security_info_list);
 DEFINE_HASHTABLE(path_sb_hash, 2);
 
-/* Mount a ransomfs partition */
-struct dentry *ransomfs_mount(struct file_system_type *fs_type,
+/* Mount a vaultfs partition */
+struct dentry *vaultfs_mount(struct file_system_type *fs_type,
                               int flags,
                               const char *dev_name,
                               void *data)
@@ -24,14 +24,14 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     struct dentry* dentry;
     dev_t bdev;
     struct mount_sb_info* cur;
-    struct ransomfs_security_info* new_node;
+    struct vaultfs_security_info* new_node;
     unsigned long irq_flags;
     unsigned bkt;
 
     //TODO make passwd a parameter at mount?
-    data = kzalloc(RANSOMFS_PASSWORD_SIZE, GFP_KERNEL);
+    data = kzalloc(VAULTFS_PASSWORD_SIZE, GFP_KERNEL);
 
-    dentry = mount_bdev(fs_type, flags, dev_name, data, ransomfs_fill_super);
+    dentry = mount_bdev(fs_type, flags, dev_name, data, vaultfs_fill_super);
     if (IS_ERR(dentry))  {
         AUDIT(ERROR)
         printk(KERN_ERR "'%s' mount failure\n", dev_name);
@@ -44,7 +44,7 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     //add information to security lists
     
     //bdev
-    new_node = kzalloc(sizeof(struct ransomfs_security_info), GFP_KERNEL);
+    new_node = kzalloc(sizeof(struct vaultfs_security_info), GFP_KERNEL);
     bdev = name_to_dev_t(dev_name);
     if (!bdev) {
         AUDIT(ERROR)
@@ -59,7 +59,7 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     //password - maybe add a magic number to check for validity?
     AUDIT(DEBUG)
     printk("Found password hash in superblock: %s\n", (char*) data);
-    memcpy(new_node->password_hash, data, RANSOMFS_PASSWORD_SIZE);
+    memcpy(new_node->password_hash, data, VAULTFS_PASSWORD_SIZE);
     kfree(data);
 
     //mount point - FIXME add concurrency here - or maybe use data again?
@@ -83,8 +83,8 @@ struct dentry *ransomfs_mount(struct file_system_type *fs_type,
     return dentry;
 }
 
-/* Unmount a ransomfs partition */
-void ransomfs_kill_sb(struct super_block *sb)
+/* Unmount a vaultfs partition */
+void vaultfs_kill_sb(struct super_block *sb)
 {
     kill_block_super(sb);
 
@@ -92,30 +92,30 @@ void ransomfs_kill_sb(struct super_block *sb)
     printk(KERN_INFO"unmounted disk\n");
 }
 
-static struct file_system_type ransomfs_file_system_type = {
+static struct file_system_type vaultfs_file_system_type = {
     .owner = THIS_MODULE,
-    .name = "ransomfs",
-    .mount = ransomfs_mount,
-    .kill_sb = ransomfs_kill_sb,
+    .name = "vaultfs",
+    .mount = vaultfs_mount,
+    .kill_sb = vaultfs_kill_sb,
     .fs_flags = FS_REQUIRES_DEV,
     .next = NULL,
 };
 
-static int __init ransomfs_init(void)
+static int __init vaultfs_init(void)
 {
     int i, ret;
 
     hash_init(path_sb_hash);
 	spin_lock_init(&info_list_spinlock);
 
-    ret = ransomfs_init_inode_cache();
+    ret = vaultfs_init_inode_cache();
     if (ret) {
         AUDIT(ERROR)
         printk(KERN_ERR "inode cache creation failed\n");
         return ret;
     }
 
-    ret = register_filesystem(&ransomfs_file_system_type);
+    ret = register_filesystem(&vaultfs_file_system_type);
     if (ret) {
         AUDIT(ERROR)
         printk(KERN_ERR "register_filesystem() failed\n");
@@ -123,7 +123,7 @@ static int __init ransomfs_init(void)
     }
     
     for (i = 0; i < KRETPROBES_COUNT; i++) {
-        ret = register_kretprobe(&ransomfs_kretprobes[i]);
+        ret = register_kretprobe(&vaultfs_kretprobes[i]);
         if (ret < 0) {
             AUDIT(ERROR)
             printk(KERN_ERR "register_kretprobe %d failed, returned %d\n", i, ret);
@@ -132,7 +132,7 @@ static int __init ransomfs_init(void)
     }
 
     for (i = 0; i < KPROBES_COUNT; i++) {
-        ret = register_kprobe(&ransomfs_kprobes[i]);
+        ret = register_kprobe(&vaultfs_kprobes[i]);
         if (ret < 0) {
             AUDIT(ERROR)
             printk(KERN_ERR "register_kprobe failed, returned %d\n", ret);
@@ -162,33 +162,33 @@ unreg_controller:
     unregister_controller();
 unreg_kprobes:    
     for (i = 0; i < KPROBES_COUNT; i++)
-        unregister_kprobe(&ransomfs_kprobes[i]);
+        unregister_kprobe(&vaultfs_kprobes[i]);
 unreg_kretprobes:
     for (i = 0; i < KRETPROBES_COUNT; i++)
-        unregister_kretprobe(&ransomfs_kretprobes[i]);
+        unregister_kretprobe(&vaultfs_kretprobes[i]);
 unreg_filesystem:
-    unregister_filesystem(&ransomfs_file_system_type);
+    unregister_filesystem(&vaultfs_file_system_type);
 free_cache:
-    ransomfs_destroy_inode_cache();
+    vaultfs_destroy_inode_cache();
     return ret;
 
 }
 
-static void __exit ransomfs_exit(void)
+static void __exit vaultfs_exit(void)
 {   
     int i;
-    int ret = unregister_filesystem(&ransomfs_file_system_type);
+    int ret = unregister_filesystem(&vaultfs_file_system_type);
     if (ret)
         AUDIT(ERROR)
         printk(KERN_ERR "unregister_filesystem() failed\n");
 
-    ransomfs_destroy_inode_cache();
+    vaultfs_destroy_inode_cache();
 
     for (i = 0; i < KPROBES_COUNT; i++)
-        unregister_kprobe(&ransomfs_kprobes[i]);
+        unregister_kprobe(&vaultfs_kprobes[i]);
 
     for (i = 0; i < KRETPROBES_COUNT; i++)
-        unregister_kretprobe(&ransomfs_kretprobes[i]);
+        unregister_kretprobe(&vaultfs_kretprobes[i]);
 	
     unregister_controller();
 
@@ -201,8 +201,8 @@ static void __exit ransomfs_exit(void)
     printk(KERN_INFO"module unloaded\n");
 }
 
-module_init(ransomfs_init);
-module_exit(ransomfs_exit);
+module_init(vaultfs_init);
+module_exit(vaultfs_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Pasquale Caporaso");

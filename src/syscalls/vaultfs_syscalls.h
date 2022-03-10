@@ -1,5 +1,5 @@
-#ifndef RANSOMFS_SYSCALLS_H
-#define RANSOMFS_SYSCALLS_H
+#ifndef VAULTFS_SYSCALLS_H
+#define VAULTFS_SYSCALLS_H
 
 #define UMOUNT_LOCK     0x0
 #define UMOUNT_UNLOCK   0x1
@@ -22,8 +22,8 @@ typedef struct umount_security_info {
 #include <linux/version.h>
 #include "lib/vtpmo.h"
 
-#include "../ransomfs.h"
-#include "../ransomfs_security.h"
+#include "../vaultfs.h"
+#include "../vaultfs_security.h"
 
 //sha512 struct
 struct sdesc {

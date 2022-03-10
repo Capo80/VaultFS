@@ -3,21 +3,21 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 
-#include "ransomfs.h"
+#include "vaultfs.h"
 
 //adds a file to a dir record block
 // 1 on success, 0 on failure, negative on error
 int add_file_to_dir_record(struct super_block* sb, uint32_t block_no, const unsigned char* filename, uint32_t ino, uint8_t file_type) {
     
-    struct ransomfs_dir_record* dir_record;
+    struct vaultfs_dir_record* dir_record;
     int off = 0;
     struct buffer_head* bh = sb_bread(sb, block_no);
     if (!bh)
         return -EIO;
 
-    dir_record = (struct ransomfs_dir_record*) bh->b_data;
+    dir_record = (struct vaultfs_dir_record*) bh->b_data;
     //iterate over records of single block
-    while (off < RANSOMFS_BLOCK_SIZE) {
+    while (off < VAULTFS_BLOCK_SIZE) {
         
         //add file to folder
         if (dir_record->ino == 0) {
@@ -31,7 +31,7 @@ int add_file_to_dir_record(struct super_block* sb, uint32_t block_no, const unsi
             return 1;
         }
         dir_record++;
-        off += sizeof(struct ransomfs_dir_record);
+        off += sizeof(struct vaultfs_dir_record);
     }
 
     brelse(bh);
@@ -43,15 +43,15 @@ int add_file_to_dir_record(struct super_block* sb, uint32_t block_no, const unsi
 // 1 on success, 0 if not found, negative on error
 int remove_file_from_dir_record(struct super_block* sb, uint32_t block_no, uint32_t ino) {
     
-    struct ransomfs_dir_record* dir_record;
+    struct vaultfs_dir_record* dir_record;
     int off = 0;
     struct buffer_head* bh = sb_bread(sb, block_no);
     if (!bh)
         return -EIO;
 
-    dir_record = (struct ransomfs_dir_record*) bh->b_data;
+    dir_record = (struct vaultfs_dir_record*) bh->b_data;
     //iterate over records of single block
-    while (off < RANSOMFS_BLOCK_SIZE) {
+    while (off < VAULTFS_BLOCK_SIZE) {
         
         //add file to folder
         if (dir_record->ino == ino) {
@@ -62,7 +62,7 @@ int remove_file_from_dir_record(struct super_block* sb, uint32_t block_no, uint3
             return 1;
         }
         dir_record++;
-        off += sizeof(struct ransomfs_dir_record);
+        off += sizeof(struct vaultfs_dir_record);
     }
 
     brelse(bh);
@@ -74,11 +74,12 @@ int remove_file_from_dir_record(struct super_block* sb, uint32_t block_no, uint3
 // recursive function to read and extent tree of a directory find some free space and  add a filename
 // TODO every fucntion that reads the exent tree is the same, is there a better way to do this?
 // return 0 if successful
-int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header *block_head, const unsigned char* filename, uint32_t ino, uint8_t file_type) {
+int add_file_to_directory(struct super_block* sb, struct vaultfs_extent_header *block_head, const unsigned char* filename, uint32_t ino, uint8_t file_type) {
 
     int i = 0, j = 0, ret;
     struct buffer_head *bh = NULL;
     uint32_t new_block_no, last_logic_no;
+    uint32_t last_phys_no;
 
     AUDIT(TRACE)
     printk(KERN_INFO "Started the read of the extent tree for add file\n");
@@ -86,14 +87,14 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
 
-        struct ransomfs_extent* curr_leaf;
+        struct vaultfs_extent* curr_leaf;
 
         AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
-            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
+            curr_leaf = (struct vaultfs_extent*) &block_head[i+1];
 
             AUDIT(TRACE)    
             printk(KERN_INFO "Reading entry %d\n", i);
@@ -115,21 +116,21 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     } else {
 
         //tree has depth zero call this function again at lower levels
-        struct ransomfs_extent_idx* curr_node;
-        struct ransomfs_extent_header* new_block_head;
+        struct vaultfs_extent_idx* curr_node;
+        struct vaultfs_extent_header* new_block_head;
         int ret;
         
         for (i = 0; i < block_head->entries; i++) {
             
             AUDIT(TRACE)
             printk("Entering entry %d", i);
-            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+            curr_node = (struct vaultfs_extent_idx*) &block_head[i+1];
 
             bh = sb_bread(sb, curr_node->leaf_block);
-            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+            new_block_head = (struct vaultfs_extent_header*) bh->b_data;
 
             //check magic
-            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+            if (new_block_head->magic != VAULTFS_EXTENT_MAGIC) {
                 AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
                 return -ENOTRECOVERABLE;
@@ -154,7 +155,6 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     printk(KERN_INFO "Extent full for directory - expanding\n");
     //failed - we have no more space in this extent - allocate a new block and add the file there
     //find the new logical block number
-    uint32_t last_phys_no;
     last_logic_no = get_last_logical_block_no(sb, block_head, &last_phys_no);
     
     AUDIT(DEBUG)
@@ -163,7 +163,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
     if (last_logic_no < 0) {
         return -ENOTRECOVERABLE;
     }
-    new_block_no = ransomfs_allocate_new_block(sb, block_head, last_logic_no+1, RANSOMFS_GROUP_IDX(last_phys_no));
+    new_block_no = vaultfs_allocate_new_block(sb, block_head, last_logic_no+1, VAULTFS_GROUP_IDX(last_phys_no));
 
     AUDIT(DEBUG)
     printk(KERN_INFO "new physical block is %d\n", new_block_no);
@@ -183,7 +183,7 @@ int add_file_to_directory(struct super_block* sb, struct ransomfs_extent_header 
 
 //tries to remove a file from a directory
 // 0 if success, negative if failure
-int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_header* block_head, uint32_t ino) {
+int remove_file_from_directory(struct super_block* sb, struct vaultfs_extent_header* block_head, uint32_t ino) {
 
     int i = 0, j = 0, ret;
     struct buffer_head *bh = NULL;
@@ -194,14 +194,14 @@ int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_he
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
 
-        struct ransomfs_extent* curr_leaf;
+        struct vaultfs_extent* curr_leaf;
 
         AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
-            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
+            curr_leaf = (struct vaultfs_extent*) &block_head[i+1];
 
             AUDIT(TRACE)    
             printk(KERN_INFO "Reading entry %d\n", i);
@@ -223,21 +223,21 @@ int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_he
     } else {
 
         //tree has depth zero call this function again at lower levels
-        struct ransomfs_extent_idx* curr_node;
-        struct ransomfs_extent_header* new_block_head;
+        struct vaultfs_extent_idx* curr_node;
+        struct vaultfs_extent_header* new_block_head;
         int ret;
         
         for (i = 0; i < block_head->entries; i++) {
             
             AUDIT(TRACE)
             printk("Entering entry %d", i);
-            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+            curr_node = (struct vaultfs_extent_idx*) &block_head[i+1];
 
             bh = sb_bread(sb, curr_node->leaf_block);
-            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+            new_block_head = (struct vaultfs_extent_header*) bh->b_data;
 
             //check magic
-            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+            if (new_block_head->magic != VAULTFS_EXTENT_MAGIC) {
                 AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
                 return -ENOTRECOVERABLE;
@@ -264,14 +264,14 @@ int remove_file_from_directory(struct super_block* sb, struct ransomfs_extent_he
 
 //recursive function to read and extent tree that keeps track of a direcotry data blocks
 // TODO need some concurrency checks here? probrably not considering files cannot be deleted
-static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx, struct ransomfs_extent_header *block_head) {
+static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx, struct vaultfs_extent_header *block_head) {
 
     uint16_t i = 0;
     uint32_t j = 0;
     int off = 0, file_counter = 0;
     struct buffer_head *bh = NULL;
-    struct ransomfs_extent* curr_leaf;
-    struct ransomfs_dir_record* curr_record;
+    struct vaultfs_extent* curr_leaf;
+    struct vaultfs_dir_record* curr_record;
     
     AUDIT(TRACE)
     printk(KERN_INFO "Started the read of the extent tree\n");
@@ -285,7 +285,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
 
-            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
+            curr_leaf = (struct vaultfs_extent*) &block_head[i+1];
             
             AUDIT(TRACE)
             printk(KERN_INFO "Reading entry %d\n", i);
@@ -300,14 +300,14 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
                     return -EIO;
 
                 off = 0;
-                curr_record = (struct ransomfs_dir_record*) bh->b_data;
+                curr_record = (struct vaultfs_dir_record*) bh->b_data;
                 //iterate over records of single block
-                while (off < RANSOMFS_BLOCK_SIZE) {
+                while (off < VAULTFS_BLOCK_SIZE) {
                     if (curr_record->ino != 0) {
                         AUDIT(DEBUG)
                         printk(KERN_INFO "Found %s\n", curr_record->filename);
                         if (file_counter >= ctx->pos-2) {
-                            if (!dir_emit(ctx, curr_record->filename, RANSOMFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
+                            if (!dir_emit(ctx, curr_record->filename, VAULTFS_MAX_FILENAME, curr_record->ino, curr_record->file_type)) {
                                 brelse(bh);
                                 printk(KERN_INFO "No more space, returning %d\n", file_counter+2);
                                 return file_counter+2; //no more space
@@ -317,7 +317,7 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
                         file_counter++;
                     }
                     curr_record++;
-                    off += sizeof(struct ransomfs_dir_record);
+                    off += sizeof(struct vaultfs_dir_record);
                 }
 
                 brelse(bh);
@@ -327,19 +327,19 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
     } else {
 
         //tree has depth zero call this function again at lower levels
-        struct ransomfs_extent_idx* curr_node;
-        struct ransomfs_extent_header* new_block_head;
+        struct vaultfs_extent_idx* curr_node;
+        struct vaultfs_extent_header* new_block_head;
         for (i = 0; i < block_head->entries; i++) {
 
             AUDIT(TRACE)
             printk("Entering entry %d", i);
-            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+            curr_node = (struct vaultfs_extent_idx*) &block_head[i+1];
 
             bh = sb_bread(sb, curr_node->leaf_block);
-            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+            new_block_head = (struct vaultfs_extent_header*) bh->b_data;
 
             //check magic
-            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+            if (new_block_head->magic != VAULTFS_EXTENT_MAGIC) {
                 AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Corrupted exent tree\n");
                 return -ENOTRECOVERABLE;
@@ -360,10 +360,10 @@ static int read_dir_extent_tree(struct super_block* sb, struct dir_context *ctx,
 	Iterate over the files in the folder and pass them to the context.
 	This function is called multiple times by the VFS when its changing the ctx pos
 */
-static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
+static int vaultfs_iterate(struct file *dir, struct dir_context *ctx)
 {
     struct inode *inode = file_inode(dir);
-    struct ransomfs_inode_info *ci = RANSOMFS_INODE(inode);
+    struct vaultfs_inode_info *ci = VAULTFS_INODE(inode);
     struct super_block *sb = inode->i_sb;
 
     AUDIT(TRACE)
@@ -374,7 +374,7 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
         return -ENOTDIR;
     
     //check that we are within the limits 
-    if (ctx->pos >= RANSOMFS_MAX_FOLDER_FILES)
+    if (ctx->pos >= VAULTFS_MAX_FOLDER_FILES)
         return 0;
     
     // . and ..
@@ -387,7 +387,7 @@ static int ransomfs_iterate(struct file *dir, struct dir_context *ctx)
     return 0;
 }
 
-const struct file_operations ransomfs_dir_ops = {
+const struct file_operations vaultfs_dir_ops = {
     .owner = THIS_MODULE,
-    .iterate_shared = ransomfs_iterate,
+    .iterate_shared = vaultfs_iterate,
 };

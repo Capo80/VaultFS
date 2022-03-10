@@ -10,11 +10,11 @@
 #include <unistd.h>
 #include <openssl/sha.h>
 
-#include "ransomfs.h"
+#include "vaultfs.h"
 
 struct superblock {
-    struct ransomfs_superblock info;
-    char padding[RANSOMFS_BLOCK_SIZE - sizeof(struct ransomfs_superblock)]; /* Padding to match block size */
+    struct vaultfs_superblock info;
+    char padding[VAULTFS_BLOCK_SIZE - sizeof(struct vaultfs_superblock)]; /* Padding to match block size */
 };
 
 void zero_device(int fd, struct stat *fstats) {
@@ -43,17 +43,17 @@ static struct superblock *write_superblock(int fd, struct stat *fstats, unsigned
     if (!sb)
         return NULL;
 
-    uint32_t blocks_count = fstats->st_size / RANSOMFS_BLOCK_SIZE;
-    uint32_t groups_count = (blocks_count-2) / RANSOMFS_BLOCKS_PER_GROUP;
-    uint32_t real_block_count = groups_count*(RANSOMFS_BLOCKS_PER_GROUP - RANSOMFS_INODES_GROUP_BLOCK_COUNT - 2);
-    uint32_t inodes_count = groups_count*RANSOMFS_INODES_PER_GROUP;
+    uint32_t blocks_count = fstats->st_size / VAULTFS_BLOCK_SIZE;
+    uint32_t groups_count = (blocks_count-2) / VAULTFS_BLOCKS_PER_GROUP;
+    uint32_t real_block_count = groups_count*(VAULTFS_BLOCKS_PER_GROUP - VAULTFS_INODES_GROUP_BLOCK_COUNT - 2);
+    uint32_t inodes_count = groups_count*VAULTFS_INODES_PER_GROUP;
 
     unsigned char hash[SHA512_DIGEST_LENGTH];
     SHA512(password, strlen((char*)password), hash);
 
     memset(sb, 0, sizeof(struct superblock));
-    sb->info = (struct ransomfs_superblock) {
-        .magic = htole32(RANSOMFS_MAGIC),
+    sb->info = (struct vaultfs_superblock) {
+        .magic = htole32(VAULTFS_MAGIC),
         .blocks_count = htole32(real_block_count),
         .inodes_count = htole32(inodes_count),
         .free_blocks_count = htole32(real_block_count - 1),
@@ -85,34 +85,34 @@ static struct superblock *write_superblock(int fd, struct stat *fstats, unsigned
 
 int write_root_inode(int fd) {
 
-	struct ransomfs_inode root_inode;
-    memset(&root_inode, 0, sizeof(struct ransomfs_inode));
+	struct vaultfs_inode root_inode;
+    memset(&root_inode, 0, sizeof(struct vaultfs_inode));
 
     //init empty file root extent
     //this extend has an head and a leaf
-    struct ransomfs_extent leaf_extent;
-    memset(&leaf_extent, 0, sizeof(struct ransomfs_extent));
+    struct vaultfs_extent leaf_extent;
+    memset(&leaf_extent, 0, sizeof(struct vaultfs_extent));
     leaf_extent.file_block = 0;
     leaf_extent.len = htole16(1);
-    leaf_extent.data_block = htole32(2 + 2 + RANSOMFS_INODES_GROUP_BLOCK_COUNT); //first datablock of the file system
+    leaf_extent.data_block = htole32(2 + 2 + VAULTFS_INODES_GROUP_BLOCK_COUNT); //first datablock of the file system
 
-    struct ransomfs_extent_header root_extent;
-    memset(&root_extent, 0, sizeof(struct ransomfs_extent_header));
-    root_extent.magic = RANSOMFS_EXTENT_MAGIC;
+    struct vaultfs_extent_header root_extent;
+    memset(&root_extent, 0, sizeof(struct vaultfs_extent_header));
+    root_extent.magic = VAULTFS_EXTENT_MAGIC;
     root_extent.entries = htole16(1);
-    root_extent.max = RANSOMFS_EXTENT_PER_INODE-1;
+    root_extent.max = VAULTFS_EXTENT_PER_INODE-1;
     root_extent.depth = 0;
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
 	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user? maybe not
-	root_inode.i_size = htole32(RANSOMFS_BLOCK_SIZE); //empty directory still has one block allocated
+	root_inode.i_size = htole32(VAULTFS_BLOCK_SIZE); //empty directory still has one block allocated
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
 	root_inode.i_blocks = htole32(1);
-    memcpy(root_inode.extent_tree, &root_extent, sizeof(struct ransomfs_extent_header));
-    memcpy(root_inode.extent_tree + 1, &leaf_extent, sizeof(struct ransomfs_extent_header));
+    memcpy(root_inode.extent_tree, &root_extent, sizeof(struct vaultfs_extent_header));
+    memcpy(root_inode.extent_tree + 1, &leaf_extent, sizeof(struct vaultfs_extent_header));
 
-	int ret = write(fd, (char*) &root_inode, sizeof(struct ransomfs_inode));
-    if (ret != sizeof(struct ransomfs_inode)) {
+	int ret = write(fd, (char*) &root_inode, sizeof(struct vaultfs_inode));
+    if (ret != sizeof(struct vaultfs_inode)) {
         return 0;
     }
 
@@ -122,14 +122,14 @@ int write_root_inode(int fd) {
 
 int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
 
-    struct ransomfs_group_desc gdt;
-    memset(&gdt, 0, sizeof(struct ransomfs_group_desc));
+    struct vaultfs_group_desc gdt;
+    memset(&gdt, 0, sizeof(struct vaultfs_group_desc));
 
     gdt.free_blocks_count = free_blocks;
     gdt.free_inodes_count = free_inodes;
 
-    int ret = write(fd, (char*) &gdt, sizeof(struct ransomfs_group_desc));
-    if (ret != sizeof(struct ransomfs_group_desc)) {
+    int ret = write(fd, (char*) &gdt, sizeof(struct vaultfs_group_desc));
+    if (ret != sizeof(struct vaultfs_group_desc)) {
         return 0;
     }
 
@@ -144,12 +144,12 @@ int write_first_bit_bitmap(int fd) {
     if (ret != sizeof(short)) { 
         return 0;
     }
-    char* zeroes = malloc(RANSOMFS_BLOCK_SIZE - sizeof(short));
-	memset(zeroes, 0, RANSOMFS_BLOCK_SIZE - sizeof(short));
-	ret = write(fd, zeroes, RANSOMFS_BLOCK_SIZE - sizeof(short));
+    char* zeroes = malloc(VAULTFS_BLOCK_SIZE - sizeof(short));
+	memset(zeroes, 0, VAULTFS_BLOCK_SIZE - sizeof(short));
+	ret = write(fd, zeroes, VAULTFS_BLOCK_SIZE - sizeof(short));
 	free(zeroes);
 	
-	if (ret != RANSOMFS_BLOCK_SIZE - sizeof(short))
+	if (ret != VAULTFS_BLOCK_SIZE - sizeof(short))
 		return 0;
 	return ret;
 
@@ -203,7 +203,7 @@ int main(int argc, char **argv) {
     }
 
     /* Check if image is large enough */
-    long int min_size = 100 * RANSOMFS_BLOCK_SIZE;
+    long int min_size = 100 * VAULTFS_BLOCK_SIZE;
     if (stat_buf.st_size <= min_size) {
         fprintf(stderr, "File is not large enough (size=%ld, min size=%ld)\n",
                 stat_buf.st_size, min_size);
@@ -224,17 +224,17 @@ int main(int argc, char **argv) {
     }
 
     //Writing group 0 table - one block/inode occupied by root
-    if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-RANSOMFS_INODES_GROUP_BLOCK_COUNT-3, RANSOMFS_INODES_PER_GROUP-1)) {
+    if (!write_group_desc_table(fd, VAULTFS_BLOCKS_PER_GROUP-VAULTFS_INODES_GROUP_BLOCK_COUNT-3, VAULTFS_INODES_PER_GROUP-1)) {
 		perror("group 0 desc table:");
     	ret =  EXIT_FAILURE;
 		goto free_sb;
 	}
 
     //write other tables
-    uint32_t blocks_count = stat_buf.st_size / RANSOMFS_BLOCK_SIZE;
-    uint32_t block_desc_count = blocks_count / RANSOMFS_BLOCKS_PER_GROUP;
+    uint32_t blocks_count = stat_buf.st_size / VAULTFS_BLOCK_SIZE;
+    uint32_t block_desc_count = blocks_count / VAULTFS_BLOCKS_PER_GROUP;
     for (int i = 0; i < block_desc_count; i++) {
-        if (!write_group_desc_table(fd, RANSOMFS_BLOCKS_PER_GROUP-RANSOMFS_INODES_GROUP_BLOCK_COUNT-2, RANSOMFS_INODES_PER_GROUP)) {
+        if (!write_group_desc_table(fd, VAULTFS_BLOCKS_PER_GROUP-VAULTFS_INODES_GROUP_BLOCK_COUNT-2, VAULTFS_INODES_PER_GROUP)) {
             perror("groups desc table:");
             ret =  EXIT_FAILURE;
             goto free_sb;
@@ -242,7 +242,7 @@ int main(int argc, char **argv) {
     }
 
     //padding until the end of the block
-    if (!write_padding(fd, RANSOMFS_BLOCK_SIZE - (block_desc_count+1)*sizeof(struct ransomfs_group_desc))) {
+    if (!write_padding(fd, VAULTFS_BLOCK_SIZE - (block_desc_count+1)*sizeof(struct vaultfs_group_desc))) {
     	perror("group desc write_padding():");
     	ret =  EXIT_FAILURE;
 		goto free_sb;

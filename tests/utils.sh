@@ -66,7 +66,7 @@ format_image() {
         image_passwd=$3
     fi
 
-    echo "Formattimg" $image_path "for RansomFS..."
+    echo "Formattimg" $image_path "for VaultFS..."
 
     $1 $image_path $image_passwd
 
@@ -80,9 +80,9 @@ insert_module() {
 
     cd $1
     make module
-    make mkfs.ransomfs
+    make mkfs.vaultfs
     echo "Inserting module..."
-    insmod ransomfs.ko
+    insmod vaultfs.ko
     cd -
 
 }
@@ -109,7 +109,7 @@ mount_fs() {
     echo "Mounting FS in" $mount_path"...";
 
     mkdir -p $mount_path
-    mount -o loop -t ransomfs $image_path $mount_path/
+    mount -o loop -t vaultfs $image_path $mount_path/
 
 }
 
@@ -160,7 +160,7 @@ remove_module() {
     echo "Removing module module..."
 
     cd $1
-    rmmod ransomfs
+    rmmod vaultfs
     make clean
     cd -
 
@@ -170,7 +170,7 @@ standard_setup() {
 
     insert_module ../src
     create_image
-    format_image ../src/mkfs.ransomfs
+    format_image ../src/mkfs.vaultfs
     mount_fs
 
 }
@@ -219,7 +219,7 @@ center() {
 
 # insert_module ../src
 # create_image
-# format_image ../src/mkfs.ransomfs
+# format_image ../src/mkfs.vaultfs
 # mount_fs
 # unlock_umount ../src/user/unlock
 # umount_fs 

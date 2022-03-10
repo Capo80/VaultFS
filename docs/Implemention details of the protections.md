@@ -13,11 +13,11 @@ All protections are active by default at Filesystem Mounting.
 
 The password that is used to umount is saved i nthe File System Superblock and is choosen during initial formatting.
 
-We extract the password from the superblock by using the data paramenter of the mount syscall in the "ransomfs_mount" function, it could also be possible to change the password at this point if the user passes it as a parameter, this is not yet implemented.
+We extract the password from the superblock by using the data paramenter of the mount syscall in the "vaultfs_mount" function, it could also be possible to change the password at this point if the user passes it as a parameter, this is not yet implemented.
 
 ## Umount protection
 
-We pair the mount point with the password during in the "ransomfs_mount" function.
+We pair the mount point with the password during in the "vaultfs_mount" function.
 
 When an umount is called we intercept it in the "security_sb_umount" function with a kprobe and block it if the mount point is the one we saved.
 
@@ -29,7 +29,7 @@ To write on the Block Device the FileSystem keeps a block_device structure insid
 
 I believe tough that the only way for a user space process to be able to interact directly with the block device is with the open syscall, beacuse of this we can use a probe on the "security_file_open", check if the path opened is a block device and block the open if it is the one that the FileSystem is using.
 
-We can pair the device with the password again in the "ransomfs_mount" function.
+We can pair the device with the password again in the "vaultfs_mount" function.
 
 To recognize the block device we should be able to use the Major/Minor number (i think?).
 
@@ -39,7 +39,7 @@ There are 2 types of write protection:
 - Single session, the only session that is able to write on the file is the first one;
 - Append only, the writes on the file cannot overwrite exisitng data;
 
-A file of RansomFS must have at least one of the 2 and, by default, will have both. Files with different level of protection can coexist on the same instance of the file system.
+A file of VaultFS must have at least one of the 2 and, by default, will have both. Files with different level of protection can coexist on the same instance of the file system.
 
 Single session is implemented in the the "open" operation, we keep additional information in the inode to check if it has already been written and deny the open in WRITE MODE if it is.
 

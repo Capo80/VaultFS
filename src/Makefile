@@ -1,9 +1,9 @@
-obj-m += ransomfs.o
-ransomfs-objs := super.o inode.o file.o dir.o extent.o kprobes/ransomfs_kprobes.o syscalls/lib/usctm.o syscalls/lib/vtpmo.o syscalls/ransomfs_syscalls.o ransomfs_src.o device/ransomfs_controller.o 
+obj-m += vaultfs.o
+vaultfs-objs := super.o inode.o file.o dir.o extent.o kprobes/vaultfs_kprobes.o syscalls/lib/usctm.o syscalls/lib/vtpmo.o syscalls/vaultfs_syscalls.o vaultfs_src.o device/vaultfs_controller.o 
 
 KDIR ?= /lib/modules/$(shell uname -r)/build
 
-MKFS = mkfs.ransomfs
+MKFS = mkfs.vaultfs
 
 IMAGE ?= test.img
 PASSWORD = 1234

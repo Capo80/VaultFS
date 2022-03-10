@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../syscalls/ransomfs_syscalls.h"
+#include "../syscalls/vaultfs_syscalls.h"
 
 int main(int argc, char **argv) {    
     

@@ -10,11 +10,11 @@
 #include <linux/crypto.h>
 #include <crypto/hash.h>
 
-#include "../ransomfs.h"
-#include "../ransomfs_security.h"
+#include "../vaultfs.h"
+#include "../vaultfs_security.h"
 
-#define DEVICE_NAME "ransomfs_controller"
-#define DEVICE_CLASS "ransomfs_controller_class"
+#define DEVICE_NAME "vaultfs_controller"
+#define DEVICE_CLASS "vaultfs_controller_class"
 
 
 int register_controller(void);

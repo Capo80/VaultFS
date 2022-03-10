@@ -6,12 +6,12 @@
 #include <linux/bitmap.h>
 #include <linux/version.h>
 
-#include "ransomfs.h"
+#include "vaultfs.h"
 
 // recursive function that reads the extent tree and finds an inode number
 // TODO every fucntion that reads the exent tree is the same, is there a better way to do this?
 // returns the inode number if found,  a negative number if not
-static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_header *block_head, const char* to_search) {
+static int find_inode_by_name(struct super_block* sb, struct vaultfs_extent_header *block_head, const char* to_search) {
 
     int i = 0, j = 0, off = 0;
     struct buffer_head *bh = NULL;
@@ -22,15 +22,15 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
     //tree has depth zero, other records point to data blocks, read them directly
     if (block_head->depth == 0) {
 
-        struct ransomfs_extent* curr_leaf;
-        struct ransomfs_dir_record* curr_record;
+        struct vaultfs_extent* curr_leaf;
+        struct vaultfs_dir_record* curr_record;
 
         AUDIT(TRACE)
         printk(KERN_INFO "Tree has depth %d and %d entries\n", block_head->depth, block_head->entries);
 
         //iterate over extent leafs
         for (i = 0; i < block_head->entries; i++) {
-            curr_leaf = (struct ransomfs_extent*) &block_head[i+1];
+            curr_leaf = (struct vaultfs_extent*) &block_head[i+1];
             
             AUDIT(TRACE)
             printk(KERN_INFO "Reading entry %d\n", i);
@@ -46,10 +46,10 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                     return -EIO;
 
                 off = 0;
-                curr_record = (struct ransomfs_dir_record*) bh->b_data;
+                curr_record = (struct vaultfs_dir_record*) bh->b_data;
 
                 //iterate over records of single block
-                while (off < RANSOMFS_BLOCK_SIZE) {
+                while (off < VAULTFS_BLOCK_SIZE) {
                     AUDIT(TRACE)
                     printk(KERN_INFO "Searching off %d ino %d", off, curr_record->ino);
                     if (curr_record->ino != 0)
@@ -58,7 +58,7 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
                             return curr_record->ino;
                         }
                     curr_record++;
-                    off += sizeof(struct ransomfs_dir_record);
+                    off += sizeof(struct vaultfs_dir_record);
                 }
 
                 brelse(bh);
@@ -66,21 +66,21 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
         }
     } else {
         //tree has depth zero call this function again at lower levels
-        struct ransomfs_extent_idx* curr_node;
-        struct ransomfs_extent_header* new_block_head;
+        struct vaultfs_extent_idx* curr_node;
+        struct vaultfs_extent_header* new_block_head;
         unsigned int ret;
         
         for (i = 0; i < block_head->entries; i++) {
 
             AUDIT(TRACE)
             printk("Entering entry %d", i);
-            curr_node = (struct ransomfs_extent_idx*) &block_head[i+1];
+            curr_node = (struct vaultfs_extent_idx*) &block_head[i+1];
 
             bh = sb_bread(sb, curr_node->leaf_block);
-            new_block_head = (struct ransomfs_extent_header*) bh->b_data;
+            new_block_head = (struct vaultfs_extent_header*) bh->b_data;
 
             //check magic
-            if (new_block_head->magic != RANSOMFS_EXTENT_MAGIC) {
+            if (new_block_head->magic != VAULTFS_EXTENT_MAGIC) {
                 AUDIT(ERROR)
                 printk(KERN_ERR "FATAL ERROR: Currupted exent tree\n");
                 return -ENOTRECOVERABLE;
@@ -108,17 +108,17 @@ static int find_inode_by_name(struct super_block* sb, struct ransomfs_extent_hea
 
 
 /* Get inode ino from disk */
-struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
+struct inode *vaultfs_iget(struct super_block *sb, unsigned long ino)
 {
     struct inode *inode = NULL;
-    struct ransomfs_inode *cinode = NULL;
-    struct ransomfs_inode_info *ci = NULL;
-    struct ransomfs_sb_info *sbi = RANSOMFS_SB(sb);
+    struct vaultfs_inode *cinode = NULL;
+    struct vaultfs_inode_info *ci = NULL;
+    struct vaultfs_sb_info *sbi = VAULTFS_SB(sb);
     struct buffer_head *bh = NULL;
-    uint32_t inode_bg = ino / RANSOMFS_INODES_PER_GROUP;
-    uint32_t inode_shift = ino % RANSOMFS_INODES_PER_GROUP;
-    uint32_t inode_block = RANSOMFS_INODE_BLOCK_IDX(inode_bg, inode_shift);
-    uint32_t inode_block_shift = inode_shift % RANSOMFS_INODES_PER_BLOCK;
+    uint32_t inode_bg = ino / VAULTFS_INODES_PER_GROUP;
+    uint32_t inode_shift = ino % VAULTFS_INODES_PER_GROUP;
+    uint32_t inode_block = VAULTFS_INODE_BLOCK_IDX(inode_bg, inode_shift);
+    uint32_t inode_block_shift = inode_shift % VAULTFS_INODES_PER_BLOCK;
     int ret;
 
     AUDIT(TRACE)
@@ -150,7 +150,7 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     	iget_failed(inode);
     	return ERR_PTR(ret);
     }
-    cinode = (struct ransomfs_inode *) bh->b_data;
+    cinode = (struct vaultfs_inode *) bh->b_data;
     cinode += inode_block_shift;
 
     inode->i_ino = ino;
@@ -170,20 +170,20 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
     printk(KERN_INFO "Saved disk info on inode\n");
 
     //copy extent tree
-    ci = RANSOMFS_INODE(inode);
-    memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
+    ci = VAULTFS_INODE(inode);
+    memcpy(ci->extent_tree, cinode->extent_tree, sizeof(struct vaultfs_extent_header)*VAULTFS_EXTENT_PER_INODE);
     ci->i_committed = le16_to_cpu(cinode->i_committed);
 
     if (S_ISDIR(inode->i_mode)) {
-        inode->i_op = &ransomfs_dir_inode_ops;
-        inode->i_fop = &ransomfs_dir_ops;
+        inode->i_op = &vaultfs_dir_inode_ops;
+        inode->i_fop = &vaultfs_dir_ops;
     } else if (S_ISREG(inode->i_mode)) {
         inode->i_op = &ransomdfs_file_inode_ops;
-        inode->i_fop = &ransomfs_file_ops;
-        inode->i_mapping->a_ops = &ransomfs_aops;
+        inode->i_fop = &vaultfs_file_ops;
+        inode->i_mapping->a_ops = &vaultfs_aops;
     }
 
-    sbi = RANSOMFS_SB(inode->i_sb);
+    sbi = VAULTFS_SB(inode->i_sb);
 
     brelse(bh);
 
@@ -197,10 +197,10 @@ struct inode *ransomfs_iget(struct super_block *sb, unsigned long ino)
 // look for inode in directory with dentry
 // return NULL on success, the inode will be connected to the dentry
 // if not found connect with NULL
-struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags)
+struct dentry *vaultfs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags)
 {
     struct super_block* sb = parent_inode->i_sb;
-    struct ransomfs_inode_info *ci = RANSOMFS_INODE(parent_inode);
+    struct vaultfs_inode_info *ci = VAULTFS_INODE(parent_inode);
     struct inode* inode = NULL;
     int ino;
 
@@ -208,7 +208,7 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
     printk(KERN_INFO "Look up called\n");
 
     //check filename size
-    if (child_dentry->d_name.len > RANSOMFS_MAX_FILENAME)
+    if (child_dentry->d_name.len > VAULTFS_MAX_FILENAME)
         return ERR_PTR(-ENAMETOOLONG);
 
     //search for inode in directory
@@ -217,7 +217,7 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
         AUDIT(TRACE)
         printk(KERN_INFO "inode for %s found, it is number %d\n", child_dentry->d_name.name, ino);
         //read the new inode from disk
-        inode = ransomfs_iget(sb, ino);
+        inode = vaultfs_iget(sb, ino);
     } else {
         AUDIT(TRACE)
         printk(KERN_INFO "inode for %s not found\n", child_dentry->d_name.name);
@@ -237,12 +237,12 @@ struct dentry *ransomfs_lookup(struct inode *parent_inode, struct dentry *child_
 
 //Allocates block_count new blocks in the closest group to close_group_idx
 // return group and block idx with error == 0 on success, on failure the group idx will contain the error code and error will be 1
-block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_group_idx, uint32_t block_count) {
+block_pos_t vaultfs_get_free_blocks(struct super_block* sb, uint32_t close_group_idx, uint32_t block_count) {
 
     struct buffer_head* bh;
     uint32_t c, distance;
     uint32_t old_val;
-    struct ransomfs_sb_info* sbi = RANSOMFS_SB(sb);
+    struct vaultfs_sb_info* sbi = VAULTFS_SB(sb);
     block_pos_t new_block_pos;
     unsigned long* data_bitmap;
 
@@ -253,9 +253,9 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
 
         //find closest group with free space
         c = 0;
-        distance = RANSOMFS_GROUPDESC_PER_BLOCK+1;
-        while (c < RANSOMFS_GROUPDESC_PER_BLOCK) {  //can be done faster but gdt is very small so not needed i think
-            if (sbi->gdt[c].free_blocks_count <= RANSOMFS_BLOCKS_PER_GROUP && sbi->gdt[c].free_blocks_count >= block_count && abs(close_group_idx - c) < distance) {
+        distance = VAULTFS_GROUPDESC_PER_BLOCK+1;
+        while (c < VAULTFS_GROUPDESC_PER_BLOCK) {  //can be done faster but gdt is very small so not needed i think
+            if (sbi->gdt[c].free_blocks_count <= VAULTFS_BLOCKS_PER_GROUP && sbi->gdt[c].free_blocks_count >= block_count && abs(close_group_idx - c) < distance) {
                 distance = abs(close_group_idx - c);
                 new_block_pos.group_idx = c;                      
             }
@@ -263,7 +263,7 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
         }
 
         //no space left
-        if (distance == RANSOMFS_GROUPDESC_PER_BLOCK+1) {
+        if (distance == VAULTFS_GROUPDESC_PER_BLOCK+1) {
             new_block_pos.group_idx = -ENOSPC;
             new_block_pos.error = 1;
             return new_block_pos;
@@ -283,16 +283,16 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
     } while (old_val < block_count);
 
     //load data bitmap from disk
-    bh = sb_bread(sb, RANSOMFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
+    bh = sb_bread(sb, VAULTFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->data_bitmap_mutex);
 
     AUDIT(DEBUG)
     printk("bitmap: %lx", *data_bitmap);
 
-    new_block_pos.block_idx = bitmap_find_next_zero_area(data_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, block_count, 0);
+    new_block_pos.block_idx = bitmap_find_next_zero_area(data_bitmap, VAULTFS_BLOCK_SIZE*8, 0, block_count, 0);
 
-    if (new_block_pos.block_idx >= RANSOMFS_BLOCK_SIZE*8) {
+    if (new_block_pos.block_idx >= VAULTFS_BLOCK_SIZE*8) {
         AUDIT(DEBUG)
         printk(KERN_ERR "FATAL ERROR: Corrupted GDT, found no data block avaible\n"); //should never happen
         __sync_fetch_and_add(&sbi->gdt[new_block_pos.group_idx].free_blocks_count, block_count);
@@ -320,18 +320,18 @@ block_pos_t ransomfs_get_free_blocks(struct super_block* sb, uint32_t close_grou
 
 }
 
-static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
+static int vaultfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
     struct super_block* sb = dir->i_sb;
     struct inode* inode = NULL;
-    struct ransomfs_inode_info* new_info, *dir_info;
-    struct ransomfs_sb_info* sbi = RANSOMFS_SB(sb);
+    struct vaultfs_inode_info* new_info, *dir_info;
+    struct vaultfs_sb_info* sbi = VAULTFS_SB(sb);
     unsigned long* data_bitmap, *inode_bitmap;
     struct buffer_head* bh;
     unsigned short curr_space;
     uint32_t ino;
     int ret = 0;
-    uint32_t parent_group_idx = RANSOMFS_GROUP_IDX(dir->i_ino);
+    uint32_t parent_group_idx = VAULTFS_GROUP_IDX(dir->i_ino);
     uint32_t phys_block_idx = 0, inode_table_idx = 0;
     block_pos_t new_block_pos;
     
@@ -339,7 +339,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     printk(KERN_INFO "Create called\n");
     
     // Check filename length
-    if (strlen(dentry->d_name.name) > RANSOMFS_MAX_FILENAME)
+    if (strlen(dentry->d_name.name) > VAULTFS_MAX_FILENAME)
         return -ENAMETOOLONG;
 
     //check mode
@@ -351,13 +351,13 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
     /*
         Find free data blocks within group
-        - Look for RANSOMFS_INITIAL_FILE_SPACE contiguos blocks
+        - Look for VAULTFS_INITIAL_FILE_SPACE contiguos blocks
         - if we fail lower the number of block until we reach 0
         - if we reach 0 we have no space left
     */
-    curr_space = RANSOMFS_INITIAL_FILE_SPACE;
+    curr_space = VAULTFS_INITIAL_FILE_SPACE;
     while (curr_space > 0) {
-        new_block_pos = ransomfs_get_free_blocks(sb, parent_group_idx, curr_space);
+        new_block_pos = vaultfs_get_free_blocks(sb, parent_group_idx, curr_space);
         if (new_block_pos.error == 0)
             break;
         curr_space--;
@@ -369,15 +369,15 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     }
     
     //get actual phys block number
-    phys_block_idx = RANSOMFS_POS_TO_PHYS(new_block_pos.group_idx,new_block_pos.block_idx);
+    phys_block_idx = VAULTFS_POS_TO_PHYS(new_block_pos.group_idx,new_block_pos.block_idx);
 
     //find free space for inode in table
     //we have a more space than needed for inodes, so if we did find a data block we will always find space for an inode
-    bh = sb_bread(sb, RANSOMFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
+    bh = sb_bread(sb, VAULTFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
 
-    inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, RANSOMFS_BLOCK_SIZE*8, 0, 1, 0);
+    inode_table_idx = bitmap_find_next_zero_area(inode_bitmap, VAULTFS_BLOCK_SIZE*8, 0, 1, 0);
 
     AUDIT(TRACE)
     printk(KERN_INFO "Found space for inode at index %u\n", inode_table_idx);
@@ -392,8 +392,8 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //down here we don't need to worry about concurrency we have already reserved the zones on the disk that we are going to use
     
     //get the new inode
-    ino = RANSOMFS_INODES_PER_GROUP*new_block_pos.group_idx + inode_table_idx;
-    inode = ransomfs_iget(sb, ino);
+    ino = VAULTFS_INODES_PER_GROUP*new_block_pos.group_idx + inode_table_idx;
+    inode = vaultfs_iget(sb, ino);
     if (IS_ERR(inode)) {
         ret = PTR_ERR(inode);
         goto correct_bitmaps;
@@ -405,8 +405,8 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     //initialize the inode
     inode_init_owner(inode, dir, mode);
 
-    new_info = RANSOMFS_INODE(inode);
-    ransomfs_init_extent_tree(new_info, phys_block_idx, curr_space);
+    new_info = VAULTFS_INODE(inode);
+    vaultfs_init_extent_tree(new_info, phys_block_idx, curr_space);
     new_info->i_committed = 0;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
     ktime_get_ts(&inode->i_ctime);
@@ -420,17 +420,17 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     if (S_ISDIR(mode)) {
         AUDIT(TRACE)
         printk("Creating a directory\n");
-        inode->i_size = RANSOMFS_BLOCK_SIZE;
-        inode->i_op = &ransomfs_dir_inode_ops;
-        inode->i_fop = &ransomfs_dir_ops;
+        inode->i_size = VAULTFS_BLOCK_SIZE;
+        inode->i_op = &vaultfs_dir_inode_ops;
+        inode->i_fop = &vaultfs_dir_ops;
         set_nlink(inode, 2); // . and ..
     } else if (S_ISREG(mode)) {
         AUDIT(TRACE)
         printk("Creating a regular file\n");
         inode->i_size = 0;
         inode->i_op = &ransomdfs_file_inode_ops;
-        inode->i_fop = &ransomfs_file_ops;
-        inode->i_mapping->a_ops = &ransomfs_aops;
+        inode->i_fop = &vaultfs_file_ops;
+        inode->i_mapping->a_ops = &vaultfs_aops;
         new_info->i_prot_mode = sbi->file_prot_mode; // assign current protection level to file
         set_nlink(inode, 1);
     }
@@ -439,7 +439,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
     printk(KERN_INFO "Inode inizialized\n");
     
     //add to directory
-    dir_info = RANSOMFS_INODE(dir);
+    dir_info = VAULTFS_INODE(dir);
     if (add_file_to_directory(sb, dir_info->extent_tree, dentry->d_name.name, ino, S_ISREG(mode) + S_ISDIR(mode)*0x2) == 0) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
         ktime_get_ts(&dir->i_ctime);
@@ -462,7 +462,7 @@ static int ransomfs_create(struct inode *dir, struct dentry *dentry, umode_t mod
 
 correct_bitmaps:
     //we failed correct the bitmaps    
-    bh = sb_bread(sb, RANSOMFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
+    bh = sb_bread(sb, VAULTFS_INODE_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     inode_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->inode_bitmap_mutex);
     bitmap_clear(inode_bitmap, inode_table_idx, 1);
@@ -470,7 +470,7 @@ correct_bitmaps:
     brelse(bh);
     mutex_unlock(&sbi->inode_bitmap_mutex);
     
-    bh = sb_bread(sb,  RANSOMFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
+    bh = sb_bread(sb,  VAULTFS_DATA_BITMAP_BLOCK_IDX(new_block_pos.group_idx));
     data_bitmap = (unsigned long*) bh->b_data;
     mutex_lock_interruptible(&sbi->data_bitmap_mutex);
     bitmap_clear(data_bitmap, new_block_pos.block_idx, curr_space);
@@ -487,18 +487,18 @@ success:
 }
 
 
-static int ransomfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode) {
-    return ransomfs_create(dir, dentry, mode | S_IFDIR, 0);
+static int vaultfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode) {
+    return vaultfs_create(dir, dentry, mode | S_IFDIR, 0);
 }
 
 
-static int ransomfs_unlink(struct inode *dir, struct dentry *dentry)
+static int vaultfs_unlink(struct inode *dir, struct dentry *dentry)
 {
 	int ret;
 	struct inode *inode = d_inode(dentry);
     struct super_block* sb = dir->i_sb;
-    struct ransomfs_inode_info *ci = RANSOMFS_INODE(dir);
-    struct ransomfs_inode_info *ci_file = RANSOMFS_INODE(inode);
+    struct vaultfs_inode_info *ci = VAULTFS_INODE(dir);
+    struct vaultfs_inode_info *ci_file = VAULTFS_INODE(inode);
 
     AUDIT(TRACE)
     printk(KERN_INFO "unlink called\n");
@@ -527,7 +527,7 @@ static int ransomfs_unlink(struct inode *dir, struct dentry *dentry)
     AUDIT(TRACE)
     printk(KERN_INFO "No links left - deleting file\n");
 
-    ret = ransomfs_free_extent_blocks(sb, ci_file->extent_tree, 0); //free file data blocks
+    ret = vaultfs_free_extent_blocks(sb, ci_file->extent_tree, 0); //free file data blocks
     if (ret < 0) {
         AUDIT(ERROR)
         printk(KERN_INFO "Failed to delete file data blocks\n");
@@ -546,22 +546,22 @@ clean_inode:
     inode->i_mode = 0;
     inode->i_ctime.tv_sec = inode->i_mtime.tv_sec = inode->i_atime.tv_sec = 0;
     ci_file->i_committed = 0;
-    memset(ci_file->extent_tree, 0, sizeof(struct ransomfs_extent_header)*RANSOMFS_EXTENT_PER_INODE);
+    memset(ci_file->extent_tree, 0, sizeof(struct vaultfs_extent_header)*VAULTFS_EXTENT_PER_INODE);
     drop_nlink(inode);
     mark_inode_dirty(inode);
 
 	return ret;
 }
 
-const struct inode_operations ransomfs_dir_inode_ops = {
-    .lookup = ransomfs_lookup,
-    .create = ransomfs_create,
-    .mkdir = ransomfs_mkdir,
-    //.rmdir = ransomfs_rmdir,
+const struct inode_operations vaultfs_dir_inode_ops = {
+    .lookup = vaultfs_lookup,
+    .create = vaultfs_create,
+    .mkdir = vaultfs_mkdir,
+    //.rmdir = vaultfs_rmdir,
 };
 
 const struct inode_operations ransomdfs_file_inode_ops = {
-    .lookup = ransomfs_lookup,
-    .create = ransomfs_create,
-    //.unlink = ransomfs_unlink,
+    .lookup = vaultfs_lookup,
+    .create = vaultfs_create,
+    //.unlink = vaultfs_unlink,
 };

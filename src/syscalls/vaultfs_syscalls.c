@@ -1,4 +1,4 @@
-#include "ransomfs_syscalls.h"
+#include "vaultfs_syscalls.h"
 
 #include "lib/usctm.h"
 
@@ -83,9 +83,9 @@ __SYSCALL_DEFINEx(2, _umount_ctl, umount_security_info_t* , info, int, command){
 asmlinkage long sys_umount_ctl(umount_security_info_t* info, int command){
 #endif
 
-    struct ransomfs_security_info* cur;
+    struct vaultfs_security_info* cur;
     int ret = 0, lock_value;
-    unsigned char* digest = kzalloc(RANSOMFS_PASSWORD_SIZE, GFP_KERNEL);
+    unsigned char* digest = kzalloc(VAULTFS_PASSWORD_SIZE, GFP_KERNEL);
     umount_security_info_t* k_info = kzalloc(sizeof(umount_security_info_t), GFP_KERNEL);
 
     AUDIT(TRACE)
@@ -124,7 +124,7 @@ asmlinkage long sys_umount_ctl(umount_security_info_t* info, int command){
     //TODO - do i need to do some locking here? i think not
     list_for_each_entry(cur, &security_info_list, node) {
         if (strcmp(cur->mount_path, k_info->mount_point) == 0) {
-            if (memcmp(cur->password_hash, digest, RANSOMFS_PASSWORD_SIZE) == 0) {
+            if (memcmp(cur->password_hash, digest, VAULTFS_PASSWORD_SIZE) == 0) {
                 AUDIT(TRACE)
                 printk(KERN_INFO "Password is correct, umount lock changed to %d\n", lock_value);
                 cur->umount_lock = lock_value;
