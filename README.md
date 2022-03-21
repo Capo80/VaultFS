@@ -110,4 +110,4 @@ To run all tests make sure you in the test folder and run:
 |:heavy_check_mark:| Implement concurrency management on the cached gdt | 1/5 |
 |:heavy_check_mark:| I ignored a lot of concurrency problems while programming, need to fix this | 3/5 |
 |:heavy_check_mark:| The search for blocks in the allocation needs to be improved in term of closeness to the other blocks | 4/5 |
-|:x:| Current makefs is zeroing the whole device, this should not be the default, only an option beacuse its really slow | 2/5 |
+|:heavy_check_mark:| Current makefs is zeroing the whole device, this should not be the default, only an option beacuse its really slow | 2/5 |

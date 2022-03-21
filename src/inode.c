@@ -330,7 +330,8 @@ static int vaultfs_create(struct inode *dir, struct dentry *dentry, umode_t mode
     struct buffer_head* bh;
     unsigned short curr_space;
     uint32_t ino;
-    int ret = 0;
+    char* zeroes;
+    int ret = 0, i;
     uint32_t parent_group_idx = VAULTFS_GROUP_IDX(dir->i_ino);
     uint32_t phys_block_idx = 0, inode_table_idx = 0;
     block_pos_t new_block_pos;
@@ -424,6 +425,15 @@ static int vaultfs_create(struct inode *dir, struct dentry *dentry, umode_t mode
         inode->i_op = &vaultfs_dir_inode_ops;
         inode->i_fop = &vaultfs_dir_ops;
         set_nlink(inode, 2); // . and ..
+        //zero initial datablocks
+        zeroes = kzalloc(VAULTFS_BLOCK_SIZE, GFP_KERNEL);
+        for (i = 0; i < curr_space; i++) {
+            bh = sb_bread(sb, phys_block_idx+i);
+            memcpy(bh->b_data, zeroes, VAULTFS_BLOCK_SIZE);
+            mark_buffer_dirty(bh);
+            brelse(bh);
+        }
+
     } else if (S_ISREG(mode)) {
         AUDIT(TRACE)
         printk("Creating a regular file\n");
@@ -448,6 +458,7 @@ static int vaultfs_create(struct inode *dir, struct dentry *dentry, umode_t mode
 #else
         dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
 #endif
+        dir->i_size += sizeof(struct vaultfs_dir_record);
         mark_inode_dirty(inode);
         mark_inode_dirty(dir);
         d_instantiate(dentry, inode);
@@ -518,7 +529,7 @@ static int vaultfs_unlink(struct inode *dir, struct dentry *dentry)
     dir->i_mtime = dir->i_atime = dir->i_ctime = current_time(dir);
 #endif
 	inode->i_ctime = dir->i_ctime;
-    
+    dir->i_size -= sizeof(struct vaultfs_dir_record);
     if (inode->i_nlink > 1) { //currently there no support for links so this check is pointless
         inode_dec_link_count(inode);
         return 0;

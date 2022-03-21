@@ -80,7 +80,8 @@ int add_file_to_directory(struct super_block* sb, struct vaultfs_extent_header *
     struct buffer_head *bh = NULL;
     uint32_t new_block_no, last_logic_no;
     uint32_t last_phys_no;
-
+    char* zeroes;
+    
     AUDIT(TRACE)
     printk(KERN_INFO "Started the read of the extent tree for add file\n");
 
@@ -168,6 +169,13 @@ int add_file_to_directory(struct super_block* sb, struct vaultfs_extent_header *
     AUDIT(DEBUG)
     printk(KERN_INFO "new physical block is %d\n", new_block_no);
     
+    //zero new block
+    zeroes = kzalloc(VAULTFS_BLOCK_SIZE, GFP_KERNEL);
+    bh = sb_bread(sb, new_block_no);
+    memcpy(bh->b_data, zeroes, VAULTFS_BLOCK_SIZE);
+    mark_buffer_dirty(bh);
+    brelse(bh);
+
     ret = add_file_to_dir_record(sb, new_block_no, filename, ino, file_type);
 
     AUDIT(TRACE)

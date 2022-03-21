@@ -1,3 +1,3 @@
 #!/bin/bash
 
-echo -n "CHANGE_FILE_PROT:$1:$2:$3" >> /dev/ransomfs_controller
+echo -n "CHANGE_FILE_PROT:$1:$2:$3" >> /dev/vaultfs_controller

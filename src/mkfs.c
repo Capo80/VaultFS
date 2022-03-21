@@ -105,7 +105,7 @@ int write_root_inode(int fd) {
 
 	root_inode.i_mode = htole16(S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH);
 	root_inode.i_uid = root_inode.i_gid = 0; //TODO change to current user? maybe not
-	root_inode.i_size = htole32(VAULTFS_BLOCK_SIZE); //empty directory still has one block allocated
+	root_inode.i_size = htole32(VAULTFS_BLOCK_SIZE); //empty directory still has size of one block
 	root_inode.i_ctime = root_inode.i_atime = root_inode.i_mtime = htole32(0); //TODO change to current time
 	root_inode.i_blocks = htole32(1);
     memcpy(root_inode.extent_tree, &root_extent, sizeof(struct vaultfs_extent_header));
@@ -118,6 +118,19 @@ int write_root_inode(int fd) {
 
     return ret;
 
+}
+
+int zero_root_data_block(int fd) {
+
+    int pos = (2 + 2 + VAULTFS_INODES_GROUP_BLOCK_COUNT)*VAULTFS_BLOCK_SIZE;
+    int old = lseek(fd, 0, SEEK_CUR);
+    lseek(fd, pos, SEEK_SET);
+    char* zeroes = malloc(VAULTFS_BLOCK_SIZE);
+	memset(zeroes, 0, VAULTFS_BLOCK_SIZE);
+    int ret = write(fd, zeroes, VAULTFS_BLOCK_SIZE);
+    lseek(fd, old, SEEK_SET);
+
+    return ret;
 }
 
 int write_group_desc_table(int fd, uint32_t free_blocks, uint32_t free_inodes) {
@@ -211,9 +224,9 @@ int main(int argc, char **argv) {
         goto fclose;
     }
 
-    //zeri device
-    zero_device(fd, &stat_buf);
-    printf("Device zeroed\n");
+    //zero device
+    //zero_device(fd, &stat_buf);
+    //printf("Device zeroed\n");
 
     /* Write superblock (block 0) */
     struct superblock *sb = write_superblock(fd, &stat_buf, (unsigned char*) argv[2]);
@@ -272,6 +285,11 @@ int main(int argc, char **argv) {
 		goto free_sb;
 	}
 
+    if (!zero_root_data_block(fd)) {
+       	perror("root data block:");
+		ret =  EXIT_FAILURE;
+		goto free_sb; 
+    }
     printf("Written root inode\n");
 
     printf("Filesystem correctly formatted\n");

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-echo -n "UMOUNT_UNLOCK:$1:$2" >> /dev/ransomfs_controller
+echo -n "UMOUNT_UNLOCK:$1:$2" >> /dev/vaultfs_controller

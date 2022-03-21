@@ -7,7 +7,10 @@ The following programs have been tested the results are the following:
 | GUI Copy+Paste | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | |
 | rsync | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | Only works with the --inplace flag because renaming is not allowed |
 | flexbackup | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | | 
-| mysqldump | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | | 
+| mysqldump | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | |  
+| unison | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | The backup will complete but the root folder name will not be the same because a temporary name is used and VaultFS does not allow the renaming | 
+| dejadup | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | | 
+| kbackup | :heavy_check_mark: | :heavy_check_mark: | :heavy_check_mark: | |  
 
 P_RG = Single session + Append only
 

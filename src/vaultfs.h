@@ -19,7 +19,7 @@
 #define VAULTFS_INODES_PER_GROUP				32768
 #define VAULTFS_INODES_GROUP_BLOCK_COUNT 		1024
 #define VAULTFS_DIR_RECORD_PER_BLOCK			15
-#define VAULTFS_GROUPDESC_PER_BLOCK			512
+#define VAULTFS_GROUPDESC_PER_BLOCK				512
 #define VAULTFS_INODES_PER_BLOCK 				32
 #define VAULTFS_EXTENT_PER_INODE				10
 #define VAULTFS_EXTENT_PER_BLOCK				408
@@ -124,6 +124,8 @@ typedef struct block_pos {
 
 #include <linux/mutex.h>
 #include <linux/fs.h>
+#include <linux/slab.h>
+
 
 struct vaultfs_inode_info {
 	struct vaultfs_extent_header extent_tree[VAULTFS_EXTENT_PER_INODE]; //start of the extent tree
